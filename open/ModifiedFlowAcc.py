@@ -6,141 +6,155 @@ import numpy as np
 
 
 class FlowAccTT:
-    def __init__(self, fd, fa, pad=True):
-        """ Flow accumulation class, which builts upon flow direction and a static flow accumulation.
+    def __init__(self, in_flowdir, in_flowacc, pad=True):
+        """ Flow accumulation class, which builds upon flow direction and a static flow accumulation.
 
         This class takes flow directions and a static flow accumulation (generated with ArcGIS no weights with the same
         flow directions) and uses those files to generate a preset of consequential numpy accumulations along the
         river network.
 
-        :param fd: Flow directions
-        :type fd: path or np.ndarray
-        :param fa: Flow accumulations
-        :type fa: path or np.ndarray
+        :param in_flowdir: Flow directions
+        :type in_flowdir: path or np.ndarray
+        :param in_flowacc: Flow accumulations
+        :type in_flowacc: path or np.ndarray
         """
-        if isinstance(fd, np.ndarray):
-            self.fd = fd
-        elif os.path.exists(fd):
-            fd = gdal.Open(fd)
-            self.fd = fd.ReadAsArray()
+
+        #Read and format data ------------------------------------------------------------------------------------------
+        if isinstance(in_flowdir, np.ndarray):
+            self.flowdir = in_flowdir
+        elif os.path.exists(in_flowdir):
+            flowdir = gdal.Open(in_flowdir)
+            self.flowdir = flowdir.ReadAsArray()
         else:
             raise Exception
 
-        if isinstance(fa, np.ndarray):
-            self.fa = fa
-            self.fanan = -9999
-        elif os.path.exists(fa):
-            fa = gdal.Open(fa)
-            self.fa = fa.ReadAsArray().copy()
-            self.fanan = fa.GetRasterBand(1).GetNoDataValue()
+        if isinstance(in_flowacc, np.ndarray):
+            self.flowacc = in_flowacc
+            self.flowacc_nan = -9999
+        elif os.path.exists(in_flowacc):
+            flowacc = gdal.Open(in_flowacc)
+            self.flowacc = flowacc.ReadAsArray().copy()
+            self.flowacc_nan = flowacc.GetRasterBand(1).GetNoDataValue()
         else:
             raise Exception
 
-        self.shape = self.fd.shape
-        if self.fa.shape != self.shape:
+        self.shape = self.flowdir.shape
+        if self.flowacc.shape != self.shape:
             raise Exception
 
         self.pad = pad
         if pad:
-            self.fa = np.pad(self.fa, 1, 'constant', constant_values=np.nanmax(self.fa)+1)
-            self.fd = np.pad(self.fd, 1, 'constant', constant_values=0)
-        self.six, self.eix = self.prepare_flowacc()
+            self.flowacc = np.pad(self.flowacc, 1, 'constant',
+                                  constant_values=np.nanmax(self.flowacc)+1)
+            self.flowdir = np.pad(self.flowdir, 1, 'constant',
+                                  constant_values=0)
+        self.startcell_ix, self.endcell_ix = self.prepare_flowacc()
 
     def prepare_flattend_edges(self):
-        """ Based on flow directions array it generates start and end indices of river flows.
+        """ Generate start and end indices of river flow for each cell based on flow directions array.
 
-        As indices the flattend position range(size) is used.
+        The flattened position range(size) is used as indices .
 
         Returns
         -------
         list, list
-            indices of origin of flow, indices of end of flow
+            indices of origin of flow, indices of cells immediately downstream of each cell (end of flow)
         """
-        fdar = self.fd
-        startix = np.arange(fdar.size, dtype=np.int32)
+        flowdir_ar = self.flowdir
+        startix = np.arange(flowdir_ar.size, dtype=np.int32)
         endix = startix.copy()
-        fdflat = fdar.flatten()
+        flowdir_flat = flowdir_ar.flatten()
         for dire, xm, ym in [(1, 0, 1), (2, 1, 1), (4, 1, 0), (8, 1, -1), (16, 0, -1),
                              (32, -1, -1), (64, -1, 0), (128, -1, 1)]:
-
-            endix[fdflat == dire] += (ym + (xm * fdar.shape[1]))
-        self.fd = None
+            endix[flowdir_flat == dire] += (ym + (xm * flowdir_ar.shape[1]))
+        self.flowdir = None
         return startix, endix
 
     def prepare_flowacc(self):
         """ The flow accumulation is prepared in this method.
 
-        The idea behind this flow accumulation algorithm is to use a static extern non weighted flow accumulation as
+        The idea behind this flow accumulation algorithm is to use a static extern unweighted flow accumulation as
         basis for the computation schedule. The flow accumulation must happen in the right order. For this the static
         flow accumulation is used. First the cells with 0 accumulated flows are accumulated to their downstream cell
-        then those with 1 accumulated flows and so on. As the accumulation is done via numpy vectors further
+        then those with 1 accumulated flows and so on. As the accumulation is done via numpy vectors, further
         segmentation is needed as two cell cannot contribute to one cell in one vector.
 
         Returns
         -------
         list, list
-            accumulation lists with spatial indices (six)
+            accumulation lists with spatial indices (startcell_ix) of sets of start and end cell indices, respectively
+            (i.e., upstream and downstream cells), split by increasing flow accumulation and unique sets of end cells
+            (because numpy summing cannot be performed in one iteration if two cells flow to the same end cell)
         """
-        six, eix = self.prepare_flattend_edges()
-        flowacc = self.fa
-        # set non necessary values to a negative Nan value
-        # flowacc[flowacc == self.fanan] = -9999
-        fa = flowacc.flatten()
-        # We only have to consider the flow of cells not where startcell = endcell (e.g. inland sinks)
-        fan = fa[six != eix]
-        del fa, flowacc
-        self.fa = None
-        sixn = six[six != eix]
-        eixn = eix[six != eix]
+        # Get ids of start and end cells
+        startcell_ix, endcell_ix = self.prepare_flattend_edges()
+        flowacc_copy = self.flowacc
+
+        # set unnecessary values to a negative Nan value
+        # flowacc[flowacc == self.flowacc_nan] = -9999
+
+        #Convert flow accumulation from 2-d to 1-d
+        flowacc = flowacc_copy.flatten()
+
+        # Only consider the flow of cells where startcell != endcell (e.g. no need to route inland sinks)
+        flowacc_nosink = flowacc[startcell_ix != endcell_ix]
+        del flowacc, flowacc_copy
+        self.flowacc = None
+        startcell_ix_nosink = startcell_ix[startcell_ix != endcell_ix]
+        endcell_ix_nosink = endcell_ix[startcell_ix != endcell_ix]
+
         # primary order of flow acc generate based on the static flowaccumulation grid
-        sortindex = np.argsort(fan)
-        sixn = sixn[sortindex]
-        eixn = eixn[sortindex]
-        fan = fan[sortindex]
+        sortindex = np.argsort(flowacc_nosink) #Get indices to sort cell indices by flow accumulation
+        startcell_ix_nosink = startcell_ix_nosink[sortindex]
+        endcell_ix_nosink = endcell_ix_nosink[sortindex]
+        flowacc_nosink = flowacc_nosink[sortindex]
+
         # The arrays are split based on the number cells which flow into them
-        splitar = np.where(np.diff(fan))[0]+1
-        sixn = np.split(sixn, splitar)
-        eixn = np.split(eixn, splitar)
+        split_ar = np.where(np.diff(flowacc_nosink))[0]+1
+        startcell_ix_nosink_split = np.split(startcell_ix_nosink, split_ar)
+        endcell_ix_nosink_split = np.split(endcell_ix_nosink, split_ar)
 
         # The arrays are split further if duplicates of endcells are in one calculation array as in computation vector
-        # only unique end indices are allowd to accumulate
-        sixns2 = []
-        eixns2 = []
-        # loop through splitted array
-        for i in range(len(eixn)):
-            # only continue if there is more than one cell in this splitted array
-            if len(sixn[i]) > 1:
+        # because only unique end indices are allowed to accumulate
+        startcell_ix_nosink_split2 = []
+        endcell_ix_nosink_split2 = []
+
+        # loop through split array
+        for i in range(len(endcell_ix_nosink_split)):
+            # only continue if there is more than one cell in this split array
+            if len(startcell_ix_nosink_split[i]) > 1:
                 # sort the array via end indices
-                sortix = np.argsort(eixn[i])
-                sixs = sixn[i][sortix]
-                eixs = eixn[i][sortix]
+                sortix = np.argsort(endcell_ix_nosink_split[i])
+                startcell_ixs = startcell_ix_nosink_split[i][sortix]
+                endcell_ixs = endcell_ix_nosink_split[i][sortix]
                 # find duplicates
-                dix = np.concatenate(([False], eixs[1:] == eixs[:-1]))
-                deix = eixs[dix]
-                dsix = sixs[dix]
+                dix = np.concatenate(([False], endcell_ixs[1:] == endcell_ixs[:-1])) #Assign False to first instance of every index and true to all subsequent duplicates
+                dendcell_ix = endcell_ixs[dix]
+                dstartcell_ix = startcell_ixs[dix]
+
                 # this loop could theroetically happen up to 8 times (all neigbours flowing into one cell)
-                while len(deix):
-                    # append those indices which arent duplicated
-                    sixns2.append(sixs[~dix])
-                    eixns2.append(eixs[~dix])
-                    # rewrite indices with array with duplicated
-                    eixs = deix
-                    sixs = dsix
+                while len(dendcell_ix):
+                    # append those indices which aren't duplicated to a newly split array
+                    startcell_ix_nosink_split2.append(startcell_ixs[~dix])
+                    endcell_ix_nosink_split2.append(endcell_ixs[~dix])
+                    # rewrite indices with array of duplicates
+                    endcell_ixs = dendcell_ix
+                    startcell_ixs = dstartcell_ix
                     # find duplicates
-                    dix = np.concatenate(([False], eixs[1:] == eixs[:-1]))
-                    dsix = sixs[dix]
-                    deix = eixs[dix]
+                    dix = np.concatenate(([False], endcell_ixs[1:] == endcell_ixs[:-1]))
+                    dstartcell_ix = startcell_ixs[dix]
+                    dendcell_ix = endcell_ixs[dix]
 
                 # add array with no more duplicates
-                sixns2.append(sixs)
-                eixns2.append(eixs)
+                startcell_ix_nosink_split2.append(startcell_ixs)
+                endcell_ix_nosink_split2.append(endcell_ixs)
             else:
-                sixns2.append(sixn[i])
-                eixns2.append(eixn[i])
+                startcell_ix_nosink_split2.append(startcell_ix_nosink_split[i])
+                endcell_ix_nosink_split2.append(endcell_ix_nosink_split[i])
 
-        return sixns2, eixns2
+        return startcell_ix_nosink_split2, endcell_ix_nosink_split2
 
-    def get(self, values, no_negative_accumulation=True):
+    def get(self, in_valuegrid, no_negative_accumulation=True):
         """
         Apply the flow accumulation and get the flow accumulated values.
 
@@ -153,26 +167,38 @@ class FlowAccTT:
         np.ndarray
             values accumulated
         """
-        if isinstance(values, np.ndarray):
-            values = values
-        elif os.path.exists(values):
-            values = gdal.Open(values).ReadAsArray()
+        if isinstance(in_valuegrid, np.ndarray):
+            values = in_valuegrid
+        elif os.path.exists(in_valuegrid):
+            values = gdal.Open(in_valuegrid).ReadAsArray()
         else:
             raise Exception
+
         if values.shape != self.shape:
             raise Exception
+
+        #Add a row and a column of 1 around array
         if self.pad:
             values = np.pad(values, 1, 'constant', constant_values=1)
-        disar = values
-        newarflat = disar.flatten()
-        for i in range(len(self.six)):
+
+        runoff_ar = values
+        new_ar_flat = runoff_ar.flatten()
+        #Iterate through every set of starting cells (split by flow accumulation values and unique end cell indices)
+        for i in range(len(self.startcell_ix)):
             if no_negative_accumulation:
                 # make sure that negative values aren't accumulated via flow accumulation
                 with warnings.catch_warnings():
                     warnings.filterwarnings('ignore')
-                    newarflat[self.six[i]] = np.where(newarflat[self.six[i]] < 0, 0, newarflat[self.six[i]])
-            newarflat[self.eix[i]] += newarflat[self.six[i]]
-        newar = newarflat.reshape(disar.shape)
+                    new_ar_flat[self.startcell_ix[i]] = np.where(new_ar_flat[self.startcell_ix[i]] < 0,
+                                                               0,
+                                                                 new_ar_flat[self.startcell_ix[i]])
+            #Accumulate startcell values downstream
+            new_ar_flat[self.endcell_ix[i]] += new_ar_flat[self.startcell_ix[i]]
+        #Re-cast array to original shape
+        newar = new_ar_flat.reshape(runoff_ar.shape)
+
+        #Remove padding row and column
         if self.pad:
             newar = newar[1:-1, 1:-1]
+
         return newar

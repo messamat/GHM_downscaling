@@ -76,7 +76,7 @@ def get_downstream_grid(in_valuegrid, in_flowdir, out_grid):
         outband = None
         outRaster = None
         raster = None
-        fd = None
+        flowdir = None
         return 0
     else:   #Otherwise, return inmemory
         tmpar = value_ar.copy()
