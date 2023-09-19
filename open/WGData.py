@@ -3,9 +3,7 @@ from os import path
 
 import pandas as pd
 import numpy as np
-import osgeo.gdal
-import osgeo.ogr
-from osgeo.osr import SpatialReference
+from osgeo import gdal, ogr, osr
 from codetiming import Timer
 
 from open.WGReadingFunctions import read_variable, InputDir
@@ -54,13 +52,13 @@ class WGData:
         self.mode = config.mode
 
         read_variable_kwargs = {
-            "simoutput_path": config.wg_out_path,
+            "wg_simoutput_path": config.wg_out_path,
             "timestep": 'month',
             "startyear": config.startyear,
             "endyear": config.endyear
         }
 
-        #Subset analysis extent to "area_of_interest"
+        #Subset analysis extent to "area_of_interest" ------------------------------------------------------------------
         if "area_of_interest" in kwargs:
             self.aoi = kwargs['area_of_interest']
             arcids = self.coords.set_index(["X", "Y"])
@@ -73,10 +71,10 @@ class WGData:
             self.aoi = ((-180., 180.), (-90., 90.))
             self.coords = self.coords.set_index('arcid')
 
-        #Read data
+        #Read data and prepare paths -----------------------------------------------------------------------------------
         self.read_variable_kwargs = read_variable_kwargs
-        self.wginput = InputDir().read(config.wg_in_path, explain=False, files=['G_FLOWDIR.UNF2', 'GR.UNF2',
-                                                                                'GC.UNF2', 'GCONTFREQ.UNF0'],
+        self.wginput = InputDir().read(config.wg_in_path, explain=False,
+                                       files=['G_FLOWDIR.UNF2', 'GR.UNF2', 'GC.UNF2', 'GCONTFREQ.UNF0'],
                                        additional_files=False, cellarea=True)
         self.continentalarea_to_landarea_conversion_factor = None
         self.surface_runoff_land_mm = None
@@ -89,47 +87,66 @@ class WGData:
         self.config = config
         self.longterm_avg_converted = False
         self.gap_flowacc_path = '{}{}_gap_flowacc.tif'.format(self.config.hydrosheds_path, config.continent)
-        self.landratio_corr_path = self.config.hydrosheds_path + 'landratio_correction.tif'
+        self.landratio_corr_path = path.join(self.config.hydrosheds_path, 'landratio_correction.tif')
 
-        #Prepare data for redistribution of volume changes of global lake and reservoir
+        #Prepare data for redistribution of volume changes of global lake and reservoir --------------------------------
         if self.config.correct_global_lakes:
             cell_runoff = read_variable(var='G_CELL_RUNOFF_',
                                                **read_variable_kwargs).data.set_index(['arcid', 'year', 'month'])
             # cell runoff with extra treatment for global lakes and reservoirs
             modrkwargs = read_variable_kwargs.copy()
             modrkwargs['startyear'] = config.startyear - 1
-            #Compute sum of lake and reservoir storage
+
+            #Compute change in reservoir or lake storage at each time step compared to previous time step
             glolak = read_variable(var='G_GLO_LAKE_STORAGE_km3_', **modrkwargs).data
-            dglolak = (glolak.set_index(['year', 'month', 'arcid']).unstack() -
+            diff_glolak = (glolak.set_index(['year', 'month', 'arcid']).unstack() -
                        glolak.set_index(['year', 'month', 'arcid']).unstack().shift(1)).stack()
+
             glores = read_variable(var='G_RES_STORAGE_km3_', **modrkwargs).data
-            dglores = (glores.set_index(['year', 'month', 'arcid']).unstack() -
+            diff_glores = (glores.set_index(['year', 'month', 'arcid']).unstack() -
                        glores.set_index(['year', 'month', 'arcid']).unstack().shift(1)).stack()
-            dgloresglolak = (dglores + dglolak).reset_index().set_index(['arcid', 'year', 'month']).sort_index()
+
+            diff_gloresglolak = ((diff_glores + diff_glolak).reset_index().
+                                 set_index(['arcid', 'year', 'month']).sort_index())
+            
+            #Read global lakes and reservoirs redistribution table and subset it if a set of cell IDs were provided
+            # to subset WG data
             if 'arcid_list' in read_variable_kwargs:
-                redistglwd = pd.read_csv(path.join(path.dirname(__file__),
+                redist_glwd = pd.read_csv(path.join(path.dirname(__file__),
                                                    '../constants/glolakandresredistribution.csv'))
-                redistglwd = redistglwd.loc[[x in read_variable_kwargs['arcid_list'] for x in redistglwd.arcid], :]
+                redist_glwd = redist_glwd.loc[[x in read_variable_kwargs['arcid_list'] for x in redist_glwd.arcid], :]
             else:
-                redistglwd = pd.read_csv(path.join(path.dirname(__file__),
+                redist_glwd = pd.read_csv(path.join(path.dirname(__file__),
                                                    '../constants/glolakandresredistribution.csv'))
+
+            #Prepare time series grids to redistribute changes in lake or reservoir storage at every time step
+            # from the outflow cell to all cells intersecting with each global lake and reservoir
             gloadditionlist = []
-            for glwdunit in redistglwd.glwdunit.unique():
-                redistmp = redistglwd[redistglwd.glwdunit == glwdunit].set_index('arcid')
+            for glwdunit in redist_glwd.glwdunit.unique(): #For each global lake
+                redistmp = redist_glwd[redist_glwd.glwdunit == glwdunit].set_index('arcid')
                 outflowcell = redistmp.outflowcell.iloc[0]
+                #Skip global lake if outflow cell (pourpoint) lies outside of area of interest
                 if outflowcell not in read_variable_kwargs['arcid_list']:
                     continue
-                gloaddition = dgloresglolak.loc[(outflowcell, slice(None), slice(None)), :].reset_index()
-                gloaddition = gloaddition.loc[gloaddition.year >= config.startyear, 'variable'].values
-                for aid in redistmp.index.get_level_values('arcid'):
-                    frac = redistmp.loc[aid, 'fracarea']
-                    if aid == outflowcell:
-                        cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] = cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] + gloaddition
+                #Extract difference in lake or reservoir volume at outflow cell
+                gloaddition = diff_gloresglolak.loc[(outflowcell, slice(None), slice(None)), :].reset_index()
+                gloaddition = gloaddition.loc[gloaddition.year >= config.startyear, 'variable'].values #Subset years within period of interest
 
-                    cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] = cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] - (gloaddition * frac)
+                for aid in redistmp.index.get_level_values('arcid'): #For each cell intersecting with the global lake
+                    frac = redistmp.loc[aid, 'fracarea'] #Extract the fraction of that cell that intersects with the lake
+                    #Remove storage change from outflow cell and redistribute to all cells that intersect with lake
+                    if aid == outflowcell:
+                        cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] = (
+                                cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] + gloaddition)
+
+                    cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] = (
+                            cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] - (gloaddition * frac))
+
+                    #Create a df to record storage change for each cell and time step
                     years = [x for x in range(config.startyear, config.endyear+1)]
                     months = [x for x in range(1, 13)]
-                    mix = pd.MultiIndex.from_product([[int(aid)], years, months], names=['arcid', 'years', 'month'])
+                    mix = pd.MultiIndex.from_product([[int(aid)], years, months],
+                                                     names=['arcid', 'years', 'month'])
                     gloadditionlist.append(pd.Series(gloaddition*frac, mix))
 
             self.cell_runoff = cell_runoff.reset_index()
@@ -139,7 +156,7 @@ class WGData:
 
     def get_longterm_avg_version(self):
         """
-        Converts cell_runoff, surface_runoff, surface_runoff_land_mm, dis into long term average
+        Converts cell_runoff, surface_runoff, surface_runoff_land_mm, discharge into long term average
 
         Returns
         -------
@@ -229,10 +246,12 @@ class WGData:
         if 'arcid' not in tmp.index.names or 'year' not in tmp.index.names or 'month' not in tmp.index.names:
             tmp = tmp.reset_index().set_index(['arcid', 'year', 'month'])
         tmp = tmp.merge(conversion, left_index=True, right_index=True)
+
         if wgdata.vars is None:
             vars_toconvert = ['variable']
         else:
             vars_toconvert = wgdata.vars
+
         for x in vars_toconvert:
             tmp[x] = tmp[x] / tmp['landm']
         new_cols = ['arcid', 'year', 'month']
@@ -241,18 +260,18 @@ class WGData:
         return new
 
     @Timer(name='decorator')
-    def arcid_six(self):
+    def arcid_spatial_ix(self):
         """
         Creates a list with a spatial index for each arcid which can be calculated
-        as row * 720 + col
+        as row * 720 + col (i.e. convert row and column numbers to unidimensional position).
 
         :return: list with spatial index
         """
-        six = []
+        spatial_ix = []
         for x in range(1, self.cell_runoff.nrows+1):
-            arcidinput = self.wginput.data.loc[x]
-            six.append(720 * arcidinput.loc['GR.UNF2'] + arcidinput.loc['GC.UNF2'])
-        return six
+            arcid_input = self.wginput.data.loc[x]
+            spatial_ix.append(720 * arcid_input.loc['GR.UNF2'] + arcid_input.loc['GC.UNF2'])
+        return spatial_ix
 
     def get_flowdir(self, nan=-99):
         """
@@ -288,25 +307,30 @@ class WGData:
                 neighbourlist = pickle.load(f)
             return neighbourlist
         neighbourlist = []
-        six = self.arcid_six()
+        spatial_ix = self.arcid_spatial_ix()
         for x in range(self.cell_runoff.nrows):
             tmp_list = []
-            if six[x]-1 in six:
-                tmp_list.append(six.index(six[x]-1) + 1)
-            if six[x]+1 in six:
-                tmp_list.append(six.index(six[x]+1) + 1)
-            if six[x]-720 in six:
-                tmp_list.append(six.index(six[x]-720) + 1)
-            if six[x]+720 in six:
-                tmp_list.append(six.index(six[x]+720) + 1)
-            if six[x]+719 in six:
-                tmp_list.append(six.index(six[x]+719) + 1)
-            if six[x]+721 in six:
-                tmp_list.append(six.index(six[x]+721) + 1)
-            if six[x]-719 in six:
-                tmp_list.append(six.index(six[x]-719) + 1)
-            if six[x]-721 in six:
-                tmp_list.append(six.index(six[x]-721) + 1)
+            #In unidimensional list of ids, the 8 neighbors of a given cell are defined as the following id shifts
+            #      |-721| -720 |-719|
+            #       | -1|      |+1  |
+            #       +719| +720 |+721  |
+
+            if spatial_ix[x]-1 in spatial_ix:
+                tmp_list.append(spatial_ix.index(spatial_ix[x]-1) + 1)
+            if spatial_ix[x]+1 in spatial_ix:
+                tmp_list.append(spatial_ix.index(spatial_ix[x]+1) + 1)
+            if spatial_ix[x]-720 in spatial_ix:
+                tmp_list.append(spatial_ix.index(spatial_ix[x]-720) + 1)
+            if spatial_ix[x]+720 in spatial_ix:
+                tmp_list.append(spatial_ix.index(spatial_ix[x]+720) + 1)
+            if spatial_ix[x]+719 in spatial_ix:
+                tmp_list.append(spatial_ix.index(spatial_ix[x]+719) + 1)
+            if spatial_ix[x]+721 in spatial_ix:
+                tmp_list.append(spatial_ix.index(spatial_ix[x]+721) + 1)
+            if spatial_ix[x]-719 in spatial_ix:
+                tmp_list.append(spatial_ix.index(spatial_ix[x]-719) + 1)
+            if spatial_ix[x]-721 in spatial_ix:
+                tmp_list.append(spatial_ix.index(spatial_ix[x]-721) + 1)
             neighbourlist.append(tuple(tmp_list))
         return neighbourlist
 
@@ -327,17 +351,22 @@ class WGData:
         """
         array = np.full((360, 720), nan)
         if isinstance(s, pd.Series):
-            df = self.wginput.data.merge(s, left_index=True, right_index=True)
+            df = self.wginput.data.merge(s, left_index=True, right_index=True) #Append basic information
             flowdir = False
         elif s == 'flowdir':
             df = self.wginput.data.rename(columns={"G_FLOWDIR.UNF2": "variable"})
             flowdir = True
         else:
             raise Exception('not implemented')
+
+        #Convert df to numpy array
         for x in df.itertuples():
             array[x._2 - 1, x._3 - 1] = x.variable
+
+        #Subset array to intersect with area of interest
         ar = array[360 - (self.aoi[1][1] + 90) * 2: 360 - (self.aoi[1][0] + 90) * 2,
                    (self.aoi[0][0] + 180) * 2: (self.aoi[0][1] + 180) * 2]
+
         if flowdir:
             # avoid flow out of aoi
             # top border
@@ -358,8 +387,8 @@ class WGData:
 
     def create_inmemory_30min_pointds(self, inp, **kwargs):
         """
-        Method which creates based on an WaterGAP resolution array (720*360) or a pandas Dataframe with arcid
-         an inmemory point layer.
+        Method which creates an inmemory point layer from a WaterGAP resolution array (720*360) or
+        a pandas Dataframe with arcid
 
         Parameters
         ----------
@@ -379,11 +408,13 @@ class WGData:
         else:
             df = None
             inptype = 'other'
+
         drv = gdal.GetDriverByName('Memory')
         ds = drv.Create('runofftemp', 0, 0, 0, gdal.GDT_Unknown)
         lyr = ds.CreateLayer('runofftemp', None, ogr.wkbPoint)
         field_defn = ogr.FieldDefn('variable', ogr.OFTReal)
         lyr.CreateField(field_defn)
+
         if inptype == 'pd':
             for x in df.itertuples():
                 feat = ogr.Feature(lyr.GetLayerDefn())
@@ -396,7 +427,7 @@ class WGData:
         else:
             if 'all' in kwargs:
                 for idx, value in np.ndenumerate(inp):
-                    x = self.aoi[0][0] + (idx[1]/2) + 0.25
+                    x = self.aoi[0][0] + (idx[1]/2) + 0.25 #Create point in the middle of cells (0.25 arc-degs from the edge)
                     y = self.aoi[1][1] - ((idx[0]/2) + 0.25)
                     if not np.isnan(value):
                         feat = ogr.Feature(lyr.GetLayerDefn())
@@ -423,11 +454,12 @@ class WGData:
         return ds
 
     def interpol_to_30min(self, ds, **kwargs):
-        return self.interpolation_to_grid(ds=ds,
-                                          width=(self.aoi[0][1] - self.aoi[0][0]) * 2,
-                                          height=(self.aoi[1][1] - self.aoi[1][0]) * 2,
-                                          outputbounds=[self.aoi[0][0], self.aoi[1][1], self.aoi[0][1], self.aoi[1][0]],
-                                          **kwargs)
+        return self.interpolation_to_grid(
+            ds=ds,
+            width=(self.aoi[0][1] - self.aoi[0][0]) * 2,
+            height=(self.aoi[1][1] - self.aoi[1][0]) * 2,
+            outputbounds=[self.aoi[0][0], self.aoi[1][1], self.aoi[0][1], self.aoi[1][0]],
+            **kwargs)
 
     def interpol_to_6min(self, ds):
         return self.interpolation_to_grid(ds=ds,
@@ -468,7 +500,7 @@ class WGData:
         alg = "invdistnn:power=2.0:smoothing=0.0:radius=1.8:max_points=9:nodata=-99"
         if 'alg' in kwargs:
             alg = kwargs.pop('alg')
-        out_raster_srs = SpatialReference()
+        out_raster_srs = osr.SpatialReference()
         out_raster_srs.ImportFromEPSG(4326)
         go = gdal.GridOptions(format='MEM',
                               outputType=gdal.GDT_Float32,
