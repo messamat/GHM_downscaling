@@ -30,14 +30,17 @@ class HydroSHEDSData:
     """
     def __init__(self, config, **kwargs):
         self.config = config
+
         if 'aoi' in kwargs:
             self.aoi = kwargs['aoi']
+
         self.flowdir = self.read_flowdir()
         self.hydrosheds_geotrans = self.flowdir.GetGeoTransform()
-        self.flowacc = FlowAccTT(self.flowdir.ReadAsArray(), self.get_flowacc_path())
+        self.flowacc = FlowAccTT(in_flowdir=self.flowdir.ReadAsArray(), in_flowacc=self.get_flowacc_path())
         self.pixarea, self.uparea = self.get_pixarea_upstream_area()
         self.globallakes_fraction_ar = self.get_globallakes_fraction()
-        self.keepGrid, self.shiftGrid = self.downstream_shift_grids()
+        self.keepGrid, self.shiftGrid = self.get_downstream_shift_grids()
+
         if config.l12harm:
             self.l12fp = os.path.join(self.config.hydrosheds_path,
                                       '{}_lev12_15s.tif'.format(self.config.continent))
@@ -93,7 +96,7 @@ class HydroSHEDSData:
         globallakes_fraction_ar[globallakes_fraction_ar == globallakes_fraction.GetRasterBand(1).GetNoDataValue()] = 0
         return globallakes_fraction_ar
 
-    def downstream_shift_grids(self):
+    def get_downstream_shift_grids(self):
         shiftGrid = '{}{}_shiftgrid.tif'.format(self.config.hydrosheds_path, self.config.continent)
         keepGrid = '{}{}_keepgrid.tif'.format(self.config.hydrosheds_path, self.config.continent)
         kg = self.get_wg_corresponding_grid(keepGrid)
@@ -107,8 +110,10 @@ class HydroSHEDSData:
         xsize = self.flowdir.RasterXSize // 120
         ysize = self.flowdir.RasterYSize // 120
         raar = ra.ReadAsArray(xoff=xoff, yoff=yoff, xsize=xsize, ysize=ysize)
+
         if raar.dtype.kind == 'f':
             raar[raar == ra.GetRasterBand(1).GetNoDataValue()] = np.nan
+
         return raar
 
     def largerivermask(self):
@@ -123,6 +128,7 @@ class HydroSHEDSData:
         l12arix = np.arange(l12ar.size, dtype=np.int32)
         l12flat = l12ar.flatten()
         del l12ar
+
         l12arix = l12arix[~(l12flat == navalue)]
         l12flat = l12flat[~(l12flat == navalue)]
         sortindex = np.argsort(l12flat).astype(np.int32)
