@@ -1,5 +1,5 @@
 import pickle
-
+import os
 
 class DownscalingConfig:
     """
@@ -113,5 +113,5 @@ class DownscalingConfig:
         """
         if sdir == 'tempdir':
             sdir = self.temp_dir
-        with open(sdir + 'config.pickle', 'wb') as f:
+        with open(os.path.join(sdir, 'config.pickle'), 'wb') as f:
             pickle.dump(self, f)

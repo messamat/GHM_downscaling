@@ -43,18 +43,21 @@ class DownScaleArray:
         self.config = config
         self.aoi = aoi
         self.write_raster_trigger = config.write_raster
+
         if 'rasterdtype' in kwargs:
             gdaldtypdict = {'f32': gdal.GDT_Float32,
                             'f64': gdal.GDT_Float64}
             self.rasterdtype = gdaldtypdict[kwargs['rasterdtype']]
         else:
             self.rasterdtype = gdal.GDT_Float32
+
         self.write_raster_specs = {
             '30min': 2,
             '6min': 10,
             '30sec': 120,
             '15sec': 240
         }
+
         if 'write_raster_trigger' in kwargs:
             self.write_raster_trigger = kwargs['write_raster_trigger']
 
@@ -73,11 +76,13 @@ class DownScaleArray:
         -------
         None
         """
+        #conversion factor between one degree and the cell size (e.g., 2 for 30 min cells, 240 for 15 arc-sec)
         rmulti = self.write_raster_specs[self.status.split('_')[0]]
+        #Get number of cols and rows based on extent and conversion factor
         no_cols = (self.aoi[0][1] - self.aoi[0][0]) * rmulti
         no_rows = (self.aoi[1][1] - self.aoi[1][0]) * rmulti
         cellsize = 1 / rmulti
-        leftdown = (self.aoi[0][0], self.aoi[1][0])
+        leftdown = (self.aoi[0][0], self.aoi[1][0])  #lower-left corner of extent
         grid_specs = (int(no_rows), int(no_cols), cellsize, leftdown)
         self.create_raster(self.data, grid_specs, to_file=fn, dtype=self.rasterdtype)
 
@@ -98,8 +103,9 @@ class DownScaleArray:
         """
         self.data = data
         self.status = status
+
         if self.write_raster_trigger:
-            self.write_raster(self.config.temp_dir + 'r' + self.status + '.tif')
+            self.write_raster(path.join(self.config.temp_dir, 'r', self.status, '.tif'))
         return self
 
     def load(self, path_saved, status):
@@ -151,7 +157,7 @@ class DownScaleArray:
             Exception('Saving not implemented')
 
     @staticmethod
-    def create_raster(ar, grid_spec, **kwargs):
+    def create_raster(ar, grid_spec, in_epsg=4326, **kwargs):
         """
         Method to generate an inmemory raster or write out a raster to file based on an array.
         If it shall be written the parameter 'to_file' must be handed over.
@@ -163,26 +169,31 @@ class DownScaleArray:
         :return: returns 0 if raster is written to file otherwise returns inmemory raster
         """
         dtype = gdal.GDT_Float32
+
         if 'dtype' in kwargs:
             dtype = kwargs['dtype']
+
         rows, cols, size, origin = grid_spec
         originx, originy = origin
+
         if 'to_file' in kwargs:
             driver = gdal.GetDriverByName('GTiff')
             name = kwargs['to_file']
         else:
             driver = gdal.GetDriverByName('MEM')
             name = 'r'
+
         out_raster = driver.Create(name, cols, rows, 1, dtype)
         out_raster.SetGeoTransform((originx, size, 0, originy, 0, size))
-        outband = out_raster.GetRasterBand(1)
-        outband.WriteArray(ar[::-1])
-        outband.SetNoDataValue(-99.)
+        out_band = out_raster.GetRasterBand(1)
+        out_band.WriteArray(ar[::-1])
+        out_band.SetNoDataValue(-99.)
         out_raster_srs = osr.SpatialReference()
-        out_raster_srs.ImportFromEPSG(4326)
+        out_raster_srs.ImportFromEPSG(in_epsg)
         out_raster.SetProjection(out_raster_srs.ExportToWkt())
+
         if 'to_file' in kwargs:
-            outband.FlushCache()
+            out_band.FlushCache()
             out_raster.FlushCache()
             outband = None
             out_raster = None

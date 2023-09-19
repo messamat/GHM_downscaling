@@ -2,14 +2,15 @@ import pickle
 import glob
 from multiprocessing import Pool
 from functools import partial
+import os
 
 import numpy as np
 import pandas as pd
-from osgeo import gdal
+import osgeo.gdal
 from codetiming import Timer
 
 from open.WGData import WGData
-from open.HydroSHEDS_data import HydroSHEDS_data
+from open.HydroSHEDSData import HydroSHEDSData
 from open.DownScaleArray import DownScaleArray
 from open.DryverDownscaling import run_task
 
@@ -35,7 +36,7 @@ class DryverDownscalingWrapper:
         kwargs updated with kwargs from DownscalingConfig
     wg : WGData.WGData
         data from WaterGAP
-    hydrosheds : HydroSHEDS_data.HydroSHEDS_data
+    hydrosheds : HydroSHEDSData.HydroSHEDSData
         data from HydroSHEDS
     daysinmonth : dict
         Dict with key = month as numeric and value = number of days
@@ -56,7 +57,7 @@ class DryverDownscalingWrapper:
                  config,
                  **kwargs):
 
-        with open(config.temp_dir + 'run_information.txt', 'w') as f:
+        with open(os.path.join(config.temp_dir, 'run_information.txt'), 'w') as f:
             temp = vars(config)
             for item in temp:
                 f.write('{} : {}\n'.format(item, temp[item]))
@@ -66,7 +67,7 @@ class DryverDownscalingWrapper:
         kwargs.update(config.kwargs)
         self.kwargs = kwargs
         self.wg = WGData(self.dconfig, **kwargs)
-        self.hydrosheds = HydroSHEDS_data(self.dconfig, **kwargs)
+        self.hydrosheds = HydroSHEDSData(self.dconfig, **kwargs)
         self.wg.calc_continentalarea_to_landarea_conversion_factor()
         self.wg.calc_surface_runoff_land_mm()
         if self.dconfig.mode == 'longterm_avg':
@@ -103,7 +104,7 @@ class DryverDownscalingWrapper:
                 if self.dconfig.l12harm:
                     staticdata['l12harmdata'] = self.hydrosheds.l12harmdata
 
-                with open(self.dconfig.temp_dir + 'staticdata.pickle', 'wb') as f:
+                with open(os.path.join(self.dconfig.temp_dir, 'staticdata.pickle'), 'wb') as f:
                     pickle.dump(staticdata, f)
 
             if data:
@@ -112,8 +113,8 @@ class DryverDownscalingWrapper:
                     for mon in range(1, 13):
                         data = {
                             'sr': self.wg.surface_runoff_land_mm.data.set_index(['arcid',
-                                                                                'month',
-                                                                                'year'])['variable'].loc[
+                                                                                 'month',
+                                                                                 'year'])['variable'].loc[
                                 slice(None), mon, yr],
                             'cellrunoffseries': self.wg.cell_runoff.set_index(['arcid',
                                                                                'month',
@@ -130,7 +131,7 @@ class DryverDownscalingWrapper:
                             'totalrunoff': self.wg.total_runoff.data.set_index(['arcid',
                                                                                 'month',
                                                                                 'year'])['variable'].loc[
-                                                                                        slice(None), mon, yr],
+                                slice(None), mon, yr],
                         }
                         if self.dconfig.correct_global_lakes:
 
@@ -150,7 +151,7 @@ class DryverDownscalingWrapper:
 
 def run_prepared_downscaling(path, number_of_worker=2):
 
-    with open(path + 'config.pickle', 'rb') as f:
+    with open(os.path.join(path, 'config.pickle'), 'rb') as f:
         config = pickle.load(f)
     pool = Pool(processes=number_of_worker)
     run_tasks = partial(run_task, path=path)
@@ -159,18 +160,22 @@ def run_prepared_downscaling(path, number_of_worker=2):
     if isinstance(config.pois, pd.DataFrame):
         poidf = pd.DataFrame([x[1] for x in poi_list], index=[x[0] for x in poi_list]).sort_index()
         poidf.columns = config.pois['stationid'].to_list()
-        poidf.to_csv(config.temp_dir +
-                     '/selected_timeseries_data_{}_{}.csv'.format(config.startyear,
-                                                                  config.endyear))
+        poidf.to_csv(os.path.join(config.temp_dir ,
+                                  '/selected_timeseries_data_{}_{}.csv'.format(config.startyear,
+                                                                               config.endyear)
+                                  )
+                     )
 
 
 def gather_finished_downscaling(path):
-    with open(path + 'config.pickle', 'rb') as f:
+    with open(os.path.join(path , 'config.pickle'), 'rb') as f:
         config = pickle.load(f)
     poi_list = [pickle.load(open(result, 'rb')) for result in glob.glob('{}*result*.pickle'.format(path))]
     poi_list = [y for x in poi_list for y in x]
     poidf = pd.DataFrame([x[1] for x in poi_list], index=[x[0] for x in poi_list]).sort_index()
     poidf.columns = config.pois['stationid'].to_list()
-    poidf.to_csv(path +
+    poidf.to_csv(os.path.join(path ,
                  'selected_timeseries_data_{}_{}.csv'.format(config.startyear,
-                                                             config.endyear))
+                                                             config.endyear)
+                              )
+                 )

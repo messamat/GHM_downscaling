@@ -1,7 +1,7 @@
-HydroSHEDS_data module
+HydroSHEDSData module
 =============
 
-.. automodule:: HydroSHEDS_data
+.. automodule:: HydroSHEDSData
    :members:
    :undoc-members:
    :show-inheritance:

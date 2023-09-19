@@ -11,6 +11,6 @@ Modules
    DownstreamGrid
    DryverDownscaling
    DryverDownscalingWrapper
-   HydroSHEDS_data
+   HydroSHEDSData
    ModifiedFlowAcc
    WGData

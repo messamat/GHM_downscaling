@@ -2,6 +2,7 @@ import warnings
 import argparse
 import glob
 from functools import partial
+import os
 import pickle
 
 import numpy as np
@@ -256,11 +257,15 @@ class DryverDownscaling:
             ds['time'].attrs = {'standard_name': 'time',
                                 'calendar': '360_day',
                                 'units': 'months since {}-01-01'.format(self.dconfig.startyear)}
-            ds.to_netcdf(self.dconfig.temp_dir +
-                         '/15sec_dis_{}_{:02d}.nc4'.format(month, year),
-                         encoding={'dis': {'zlib': True, 'complevel': 9,
-                                           'dtype': 'float32'}},
-                         unlimited_dims=['time'])
+            ds.to_netcdf(
+                os.path.join(
+                    self.dconfig.temp_dir,
+                    '/15sec_dis_{}_{:02d}.nc4'.format(month, year),
+                    encoding={'dis': {'zlib': True, 'complevel': 9,
+                                      'dtype': 'float32'}},
+                    unlimited_dims=['time']
+                )
+            )
             del ds
             del result
         # self.wg.aoi = self.kwargs['area_of_interest']
@@ -643,7 +648,7 @@ class DryverDownscaling:
 
         """
 
-        fd = self.get_30min_array('flowdir')
+        flowdir = self.get_30min_array('flowdir')
         lrivermask = self.staticdata['largerivermask']
         if self.dconfig.mode == 'ts':
             dism3s = self.get_30min_array(dis, np.nan) / (self.daysinmonthdict[kwargs['month']] * 24 * 60
@@ -651,18 +656,23 @@ class DryverDownscaling:
         else:
             dism3s = self.get_30min_array(dis, np.nan) / (365 * 24 * 60 * 60) * 1000000000
         dis_largerivers_wg_30min = dism3s * lrivermask
-        cell_dis_contribution_wg = dis_largerivers_wg_30min - get_inflow_sum(dis_largerivers_wg_30min, fd)
+        cell_dis_contribution_wg = (dis_largerivers_wg_30min
+                                    - get_inflow_sum(in_valuegrid=dis_largerivers_wg_30min,
+                                                     in_flowgrid=flowdir)
+                                    )
         cellpourpixel = self.staticdata['cellpourpixel']
         correcteddis = correcteddis * cellpourpixel
         tmp_maxaccudis30min = self.aggmax(correcteddis, 120)
         dis_largerivers_hydrosheds_30min = tmp_maxaccudis30min * lrivermask
-        cell_dis_contribution_hydrosheds = dis_largerivers_hydrosheds_30min - get_inflow_sum(dis_largerivers_hydrosheds_30min,
-                                                                             fd)
+        cell_dis_contribution_hydrosheds = (dis_largerivers_hydrosheds_30min
+                                            - get_inflow_sum(in_valuegrid=dis_largerivers_hydrosheds_30min,
+                                                             in_flowgrid=flowdir)
+                                            )
         cell_dis_contribution_dif = cell_dis_contribution_wg - cell_dis_contribution_hydrosheds
         gapmask = 1 - lrivermask
         transfer_value_grid = gapmask * cell_dis_contribution_dif
-        transfer_ddm_grid = fd * (1 - lrivermask)
-        transfer_ddm_grid[fd == -99] = -99
+        transfer_ddm_grid = flowdir * (1 - lrivermask)
+        transfer_ddm_grid[flowdir == -99] = -99
         fa = self.staticdata['30mingap_flowacc']
         transfer_accu_grid = FlowAccTT(transfer_ddm_grid, fa, True).get(transfer_value_grid,
                                                                         no_negative_accumulation=False)
@@ -672,23 +682,26 @@ class DryverDownscaling:
         return new_diff_dis_30min
 
     def shift_correctiongrid(self, correctiongrid):
-        fd30min = self.get_30min_array('flowdir')
-        corr_grid = ((correctiongrid * self.staticdata['keepgrid']) +
-                     get_inflow_sum((correctiongrid * self.staticdata['shiftgrid']), fd30min))
+        flowdir30min = self.get_30min_array('flowdir')
+        corr_grid = ((correctiongrid * self.staticdata['keepgrid'])
+                     + get_inflow_sum(in_valuegrid=(correctiongrid * self.staticdata['shiftgrid']),
+                                      in_flowgrid=flowdir30min)
+                     )
         return corr_grid
 
     def smooth_correctiongrid(self, correctiongrid):
-        fd30min = self.get_30min_array('flowdir')
+        flowdir30min = self.get_30min_array('flowdir')
         corr_grid = correctiongrid
         for i in range(10):
-            down_corr_grid = get_downstream_grid(corr_grid, fd30min, None)
-            min_diff_grid = np.min([np.abs(corr_grid), np.abs(down_corr_grid)], axis=0)
+            down_corr_grid = get_downstream_grid(in_valuegrid=corr_grid, in_flowdir=flowdir30min, out_grid=None)
+            min_diff_grid = np.min([np.abs(corr_grid), np.abs(down_corr_grid)],
+                                   axis=0)
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
                 sign_grid = (((corr_grid < 0) * (down_corr_grid > 0)).astype(int) -
                              ((corr_grid > 0) * (down_corr_grid < 0)).astype(int))
             change_grid = sign_grid * min_diff_grid
-            inflow_change_grid = get_inflow_sum(change_grid, fd30min)
+            inflow_change_grid = get_inflow_sum(in_valuegrid=change_grid, in_flowdir=flowdir30min)
             corr_grid = corr_grid + change_grid - inflow_change_grid
 
         return corr_grid
@@ -856,7 +869,10 @@ class DryverDownscaling:
 
 
 def run_task(task, path):
-    dd = DryverDownscaling(datafn=task, staticdatafn=path + 'staticdata.pickle', configfn=path + 'config.pickle')
+    dd = DryverDownscaling(datafn=task,
+                           staticdatafn= os.path.join(path, 'staticdata.pickle'),
+                           configfn=os.path.join(path, 'config.pickle')
+                           )
     return dd.save_and_run_ts()
 
 

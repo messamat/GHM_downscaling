@@ -1,5 +1,6 @@
 
-import gdal
+import os
+from osgeo import gdal
 import numpy as np
 from codetiming import Timer
 
@@ -16,7 +17,7 @@ _pixarea_15s.tif
 """
 
 
-class HydroSHEDS_data:
+class HydroSHEDSData:
     """
     HydroSHEDS data read in and processed for Downscaling
 
@@ -38,7 +39,8 @@ class HydroSHEDS_data:
         self.globallakes_fraction_ar = self.get_globallakes_fraction()
         self.keepGrid, self.shiftGrid = self.downstream_shift_grids()
         if config.l12harm:
-            self.l12fp = self.config.hydrosheds_path + self.config.continent + '_lev12_15s.tif'
+            self.l12fp = os.path.join(self.config.hydrosheds_path,
+                                      '{}_lev12_15s.tif'.format(self.config.continent))
             self.l12harmdata = self.prepare_level12_harmonize()
 
     def read_flowdir(self):
@@ -49,15 +51,20 @@ class HydroSHEDS_data:
         -------
         gdal.DataSet
         """
-        flowdir = self.config.hydrosheds_path + self.config.continent + '_dir_15s.tif'
+        flowdir = os.path.join(self.config.hydrosheds_path,
+                               '{}_dir_15s.tif'.format(self.config.continent)
+                               )
         flowdir = gdal.Open(flowdir)
         return flowdir
 
     def get_flowacc_path(self):
-        return self.config.hydrosheds_path + self.config.continent + '_acc_15s.tif'
+        return os.path.join(self.config.hydrosheds_path,
+                            '{}_acc_15s.tif'.format(self.config.continent))
 
     def get_cellpourpixel(self):
-        pp = self.config.hydrosheds_path + self.config.continent + '_cellpourpoint_15s.tif'
+        pp = os.path.join(self.config.hydrosheds_path,
+                          '{}_cellpourpoint_15s.tif'.format(self.config.continent)
+                          )
         pp = gdal.Open(pp)
         ar = pp.ReadAsArray()
         nav = pp.GetRasterBand(1).GetNoDataValue()
@@ -66,7 +73,9 @@ class HydroSHEDS_data:
 
     def get_pixarea_upstream_area(self):
         # pixelarea
-        pixelarea_path = self.config.hydrosheds_path + self.config.continent + '_pixarea_15s.tif'
+        pixelarea_path = os.path.join(self.config.hydrosheds_path,
+                                      '{}_pixarea_15s.tif'.format(self.config.continent)
+                                      )
         pa = gdal.Open(pixelarea_path)
         pixarea = pa.ReadAsArray().copy()
         pixarea[pixarea == pa.GetRasterBand(1).GetNoDataValue()] = np.nan
@@ -76,7 +85,9 @@ class HydroSHEDS_data:
         return pixarea, uparea
 
     def get_globallakes_fraction(self):
-        globallakes_fraction_path = self.config.hydrosheds_path + self.config.continent + '_pixareafraction_glolakres_15s.tif'
+        globallakes_fraction_path = os.path.join(self.config.hydrosheds_path,
+                                                 '{}_pixareafraction_glolakres_15s.tif'.format(self.config.continent)
+                                                 )
         globallakes_fraction = gdal.Open(globallakes_fraction_path)
         globallakes_fraction_ar = globallakes_fraction.ReadAsArray().copy()
         globallakes_fraction_ar[globallakes_fraction_ar == globallakes_fraction.GetRasterBand(1).GetNoDataValue()] = 0
@@ -121,6 +132,8 @@ class HydroSHEDS_data:
         return np.split(l12arix, splitar)
 
     def read_pixarea(self):
-        pixareapath = self.config.hydrosheds_path + self.config.continent + '_pixarea_15s.tif'
+        pixareapath = os.path.join(self.config.hydrosheds_path,
+                                   '{}_pixarea_15s.tif'.format(self.config.continent)
+                                   )
         pa = gdal.Open(pixareapath)
         return pa

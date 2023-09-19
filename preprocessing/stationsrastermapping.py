@@ -1,4 +1,4 @@
-import gdal
+import osgeo.gdal
 import pandas as pd
 from osgeo import ogr
 

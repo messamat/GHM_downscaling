@@ -1,3 +1,5 @@
+import os
+from inspect import getsourcefile
 import pandas as pd
 from codetiming import Timer
 
@@ -5,9 +7,8 @@ from open.DryverDownscalingWrapper import DryverDownscalingWrapper, gather_finis
 from open.DryverDownscalingConfig import DownscalingConfig
 from open.helper import get_continental_extent
 
-
 @Timer(name='decorator', text='Downscaling takes currently {minutes:.0f} minutes')
-def main(rtype):
+def main(rtype, rootdir):
     """
     Preparation and running script for Downscaling.
     Modify variables in this main function to configure the downscaling and corresponding paths.
@@ -25,10 +26,12 @@ def main(rtype):
     """
     continentlist = ['eu', 'as', 'si']
     continent = ''.join(continentlist)
-    wginpath = '/home/home1/gm/datasets/input_routing/wghm22e_v001/input/' #'/home/home1/gm/datasets/input_routing/wghm22e_v001/input/'
-    wgpath = '/home/home8/dryver/22eant/'
-    hydrosheds_path = '/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
-    pois = pd.read_csv('{}stations.csv'.format(hydrosheds_path)) #points of interest
+    wginpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data',
+                            'wghm22e_v001', 'input') #'/home/home1/gm/datasets/input_routing/wghm22e_v001/input/'
+    wgpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data', '22eant') #'/home/home8/dryver/22eant/'
+    hydrosheds_path = os.path.join(rootdir, 'data', 'setupdata_for_downscaling') #'/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
+    stations_path = os.path.join(hydrosheds_path, 'stations.csv')
+    pois = pd.read_csv(stations_path) #points of interest
 
     xmin, xmax, ymin, ymax = get_continental_extent(continentlist)
     aoi = ((xmin, xmax), (ymin, ymax))
@@ -62,7 +65,7 @@ def main(rtype):
         down = DryverDownscalingWrapper(dconfig)
         down.prepare()
     if rtype == 'clustermod' or rtype == 'clusterfull':
-        with open(dconfig.temp_dir + 'run_information.txt', 'w') as f:
+        with open(os.path.join(dconfig.temp_dir, 'run_information.txt'), 'w') as f:
             temp = vars(dconfig)
             for item in temp:
                 f.write('{} : {}\n'.format(item, temp[item]))
@@ -77,8 +80,14 @@ def main(rtype):
 
 
 if __name__ == '__main__':
-    localdir = '/home/home8/dryver/rastertemp/nobackup/eurasia/final/'
-    main('ipg80')
+    rootdir = os.path.dirname(os.path.abspath(
+        getsourcefile(lambda:0))).split('\\src')[0]
+    localdir = os.path.join(rootdir, 'results', 'localdir')
+    if not os.path.exists(localdir):
+        os.mkdir(localdir)
+    main(rftype='ipg80',
+         localdir=localdir,
+         rootdir=rootdir)
     # run_prepared_downscaling(localdir, 2)
     # gather_finished_downscaling(localdir)
 
