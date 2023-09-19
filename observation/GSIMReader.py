@@ -34,9 +34,9 @@ class GSIMStation(DailyStationData):
         except ValueError:
             return None
         if self.daily_source == 'ewa':
-            datapath = '{}{}.day'.format(self.gsim_basepath, daily_sid)
-            if path.exists(datapath):
-                df = pd.read_csv(datapath,
+            data_path = '{}{}.day'.format(self.gsim_basepath, daily_sid)
+            if path.exists(data_path):
+                df = pd.read_csv(data_path,
                                  comment='#',
                                  sep=';',
                                  parse_dates=[1],
@@ -50,12 +50,12 @@ class GSIMStation(DailyStationData):
                 self.daily_data = s.reindex(complete_ts)
                 return self.daily_data
             else:
-                print('{} not found'.format(datapath))
+                print('{} not found'.format(data_path))
                 return None
         elif self.daily_source == 'afd':
-            datapath = '{}{}.csv'.format(self.gsim_basepath, daily_sid)
-            if path.exists(datapath):
-                df = pd.read_csv(datapath)
+            data_path = '{}{}.csv'.format(self.gsim_basepath, daily_sid)
+            if path.exists(data_path):
+                df = pd.read_csv(data_path)
                 df['date'] = pd.to_datetime(df['fecha'], format='%d/%m/%Y')
                 df = df.set_index(['date'])
                 s = df.loc[:, 'caudal']
@@ -63,11 +63,11 @@ class GSIMStation(DailyStationData):
                 self.daily_data = s.reindex(complete_ts)
                 return self.daily_data
             else:
-                print('{} not found'.format(datapath))
+                print('{} not found'.format(data_path))
                 return None
         elif self.daily_source == 'grdb':
-            datapath = '{}{}_Q_Day.Cmd.txt'.format(self.gsim_basepath, daily_sid)
-            if path.exists(datapath):
+            data_path = '{}{}_Q_Day.Cmd.txt'.format(self.gsim_basepath, daily_sid)
+            if path.exists(data_path):
                 df = pd.read_csv(datapath,
                                  comment='#',
                                  sep=';',

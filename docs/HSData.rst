@@ -1,7 +1,7 @@
-HSData module
+HydroSHEDS_data module
 =============
 
-.. automodule:: HSData
+.. automodule:: HydroSHEDS_data
    :members:
    :undoc-members:
    :show-inheritance:

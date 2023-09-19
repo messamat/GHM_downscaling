@@ -10,12 +10,12 @@ from observation.DailyStation import DailyStationData
 
 class RBISStation(DailyStationData):
 
-    def __init__(self, fpath, station_data):
+    def __init__(self, f_path, station_data):
         super().__init__(station_data)
-        self.fpath = fpath
+        self.f_path = f_path
 
     def read_station_data(self):
-        with open(self.fpath, mode='r', encoding='utf-8-sig') as f:
+        with open(self.f_path, mode='r', encoding='utf-8-sig') as f:
             lines = f.readlines()
             for line in lines:
                 if line.startswith('#'):
@@ -45,13 +45,13 @@ class RBISStation(DailyStationData):
                 self.station_data['Longitude'] = lon
 
     def read_daily_data(self):
-        if not path.exists(self.fpath):
+        if not path.exists(self.f_path):
             print('path doesnt exist')
             raise OSError
         else:
             self.read_station_data()
 
-        df = pd.read_csv(self.fpath,
+        df = pd.read_csv(self.f_path,
                          comment='#',
                          sep='\t',
                          parse_dates=[1],
@@ -73,13 +73,13 @@ class RBISStation(DailyStationData):
 def main():
     rbisfiles = glob.glob('/home/home1/gm/projects/DRYvER/03_data/07_streamflowdata/01_localstreamflowdata/uuid/data*.txt')
     stationslist = []
-    for fpath in rbisfiles:
-        test = RBISStation(fpath,{})
+    for f_path in rbisfiles:
+        test = RBISStation(f_path,{})
         test.read_station_data()
         test.read_daily_data()
         test.get_monthly_data()
-        #test.plot_monthly(fpath[:-4] + '.html')
-        stationslist.append([fpath[-36:-4], test.station_data['Station identifier'], test.station_data['Station name'],
+        #test.plot_monthly(f_path[:-4] + '.html')
+        stationslist.append([f_path[-36:-4], test.station_data['Station identifier'], test.station_data['Station name'],
                              test.station_data['Latitude'], test.station_data['Longitude'],
                              test.station_data['nmonths'], test.station_data['firstmonth'],
                              test.station_data['lastmonth']])

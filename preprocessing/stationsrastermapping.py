@@ -3,18 +3,18 @@ import pandas as pd
 from osgeo import ogr
 
 
-def create_stationrastermapping(flowaccpath, stations_vector,  outputdir):
+def create_stationrastermapping(flowacc_path, stations_vector,  outputdir):
     driver = ogr.GetDriverByName('GeoJSON')
     datasource = driver.Open(stations_vector)
     stations = datasource.GetLayer()
-    gt = gdal.Open(flowaccpath).GetGeoTransform()
+    gt = gdal.Open(flowacc_path).GetGeoTransform()
 
     def get_row_col(x, y):
-        ulX = gt[0]
-        ulY = gt[3]
-        xDist = gt[1]
-        col = int((x - ulX) / xDist)
-        row = int((ulY - y) / xDist)
+        ulX = gt[0] #upper left corner x (longitude) in projection coordinates
+        ulY = gt[3] #upper left corner y (latitude) in projection coordinates
+        xDist = gt[1] #pixel width in the linear unit of the projection coordinate system
+        col = int((x - ulX) / xDist)  #col index in raster
+        row = int((ulY - y) / xDist) #row index in raster
         return row, col
 
     dflist = []

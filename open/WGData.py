@@ -3,12 +3,12 @@ from os import path
 
 import pandas as pd
 import numpy as np
-import gdal
-import ogr
-from osr import SpatialReference
+import osgeo.gdal
+import osgeo.ogr
+from osgeo.osr import SpatialReference
 from codetiming import Timer
 
-from WGReadingFunctions import read_variable, InputDir
+from open.WGReadingFunctions import read_variable, InputDir
 """
 Needed general input data
 ../constants/xyarcid.csv
@@ -23,7 +23,6 @@ G_RIVER_AVAIL_
 WaterGAPinputdir
 
 """
-
 
 class WGData:
     """
@@ -49,9 +48,11 @@ class WGData:
     """
     def __init__(self, config,
                  **kwargs):
-
+        # CSV of longitude, latitude and corresponding ID for each cell in WaterGAP grids
         self.coords = pd.read_csv(path.join(path.dirname(__file__), '../constants/xyarcid.csv'))
+        # Get analysis mode - long-term average or time.series mode
         self.mode = config.mode
+
         read_variable_kwargs = {
             "simoutput_path": config.wg_out_path,
             "timestep": 'month',
@@ -59,38 +60,45 @@ class WGData:
             "endyear": config.endyear
         }
 
+        #Subset analysis extent to "area_of_interest"
         if "area_of_interest" in kwargs:
             self.aoi = kwargs['area_of_interest']
             arcids = self.coords.set_index(["X", "Y"])
-            rel_arcids_df = arcids.sort_index().loc[(slice(self.aoi[0][0], self.aoi[0][1]),
+            relative_arcids_df = arcids.sort_index().loc[(slice(self.aoi[0][0], self.aoi[0][1]),
                                                      slice(self.aoi[1][0], self.aoi[1][1])), 'arcid']
-            rel_arcids = rel_arcids_df.values.tolist()
-            read_variable_kwargs['arcid_list'] = rel_arcids
-            self.coords = rel_arcids_df.reset_index().set_index('arcid')
+            relative_arcids = relative_arcids_df.values.tolist()
+            read_variable_kwargs['arcid_list'] = relative_arcids
+            self.coords = relative_arcids_df.reset_index().set_index('arcid')
         else:
             self.aoi = ((-180., 180.), (-90., 90.))
             self.coords = self.coords.set_index('arcid')
+
+        #Read data
         self.read_variable_kwargs = read_variable_kwargs
         self.wginput = InputDir().read(config.wg_in_path, explain=False, files=['G_FLOWDIR.UNF2', 'GR.UNF2',
                                                                                 'GC.UNF2', 'GCONTFREQ.UNF0'],
                                        additional_files=False, cellarea=True)
-        self.landmmconversion = None
-        self.surface_runoff_landmm = None
-        self.landfractions = read_variable(var='G_LAND_AREA_FRACTIONS_', **read_variable_kwargs)
+        self.continentalarea_to_landarea_conversion_factor = None
+        self.surface_runoff_land_mm = None
+        self.land_fractions = read_variable(var='G_LAND_AREA_FRACTIONS_', **read_variable_kwargs)
         self.surface_runoff = read_variable(var='G_SURFACE_RUNOFF_', **read_variable_kwargs)
         self.total_runoff = read_variable(var='G_RUNOFF_', **read_variable_kwargs)
         self.gw_runoff = read_variable(var='G_GW_RUNOFF_mm_', **read_variable_kwargs)
         self.dis = read_variable(var='G_RIVER_AVAIL_', **read_variable_kwargs)  # km3 / month
+
         self.config = config
-        self.lta_converted = False
-        self.gapfapath = '{}{}_gapfa.tif'.format(self.config.hs_path, config.continent)
-        self.landcorrpath = self.config.hs_path + 'landratio_correction.tif'
-        if self.config.glolakredist:
+        self.longterm_avg_converted = False
+        self.gap_flowacc_path = '{}{}_gap_flowacc.tif'.format(self.config.hydrosheds_path, config.continent)
+        self.landratio_corr_path = self.config.hydrosheds_path + 'landratio_correction.tif'
+
+        #Prepare data for redistribution of volume changes of global lake and reservoir
+        if self.config.correct_global_lakes:
             cell_runoff = read_variable(var='G_CELL_RUNOFF_',
                                                **read_variable_kwargs).data.set_index(['arcid', 'year', 'month'])
             # cell runoff with extra treatment for global lakes and reservoirs
             modrkwargs = read_variable_kwargs.copy()
             modrkwargs['startyear'] = config.startyear - 1
+            #Compute sum of lake and reservoir storage
             glolak = read_variable(var='G_GLO_LAKE_STORAGE_km3_', **modrkwargs).data
             dglolak = (glolak.set_index(['year', 'month', 'arcid']).unstack() -
                        glolak.set_index(['year', 'month', 'arcid']).unstack().shift(1)).stack()
@@ -129,9 +137,9 @@ class WGData:
         else:
             self.cell_runoff = read_variable(var='G_CELL_RUNOFF_', **read_variable_kwargs).data
 
-    def get_lta_version(self):
+    def get_longterm_avg_version(self):
         """
-        Converts cell_runoff, surface_runoff, surface_runoff_landmm, dis into long term average
+        Converts cell_runoff, surface_runoff, surface_runoff_land_mm, dis into long term average
 
         Returns
         -------
@@ -141,43 +149,45 @@ class WGData:
                                                       .groupby('arcid').mean().reset_index())
         self.surface_runoff.data = (self.surface_runoff.data.groupby(['arcid', 'year'])['variable'].sum().reset_index()
                                                             .groupby('arcid').mean().reset_index())
-        self.surface_runoff_landmm.data = (self.surface_runoff_landmm.data.groupby(['arcid', 'year'])['variable']
+        self.surface_runoff_land_mm.data = (self.surface_runoff_land_mm.data.groupby(['arcid', 'year'])['variable']
                                                                           .sum().reset_index()
                                                                           .groupby('arcid').mean().reset_index())
         self.dis.data = (self.dis.data.groupby(['arcid', 'year'])['dis']
                                       .sum().reset_index()
                                       .groupby('arcid').mean().reset_index())
-        self.lta_converted = True
+        self.longterm_avg_converted = True
 
-    def calc_landmmconversion(self):
+    def calc_continentalarea_to_landarea_conversion_factor(self):
         """
-        Calculates a landmmconversion.
+        Calculates a continentalarea_to_landarea_conversion_factor.
 
         In cells where we have big swb surface runoff has to be converted to the landarea,
-        thus we need a landmmconversion via landarea fraction / conintental area fraction
+        thus we need a continentalarea_to_landarea_conversion_factor via landarea fraction / conintental area fraction
 
         Returns
         -------
         None
         """
-        if self.landmmconversion is None:
-            landfractionswithcont = (self.landfractions.data.set_index('arcid')
+        if self.continentalarea_to_landarea_conversion_factor is None:
+            land_fractionswithcont = (self.land_fractions.data.set_index('arcid')
                                          .merge(self.wginput.data.loc[:, 'GCONTFREQ.UNF0'],
                                                 left_index=True, right_index=True)
                                          .set_index(['year', 'month'], append=True))
-            self.landmmconversion = landfractionswithcont['landareafr'] / landfractionswithcont['GCONTFREQ.UNF0']
+            self.continentalarea_to_landarea_conversion_factor = (
+                    land_fractionswithcont['landareafr'] / land_fractionswithcont['GCONTFREQ.UNF0'])
 
-    def calc_surface_runoff_landmm(self):
+    def calc_surface_runoff_land_mm(self):
         """
-        Converts surface runoff to surface runoff over land see calc_landmmconversion
+        Converts surface runoff to surface runoff over land see calc_continentalarea_to_landarea_conversion_factor
 
         Returns
         -------
         None
         """
-        if self.surface_runoff_landmm is None:
-            self.surface_runoff_landmm = self.apply_landmmconversion(self.surface_runoff, self.landmmconversion)
-            self.landmmconversion = None
+        if self.surface_runoff_land_mm is None:
+            self.surface_runoff_land_mm = self.apply_continentalarea_to_landarea_conversion_factor(
+                self.surface_runoff, self.continentalarea_to_landarea_conversion_factor)
+            self.continentalarea_to_landarea_conversion_factor = None
 
     def convert_mm_to_km3(self, df):
         """
@@ -199,7 +209,7 @@ class WGData:
         return a.loc[:, df.columns]
 
     @staticmethod
-    def apply_landmmconversion(wgdata, conversion):
+    def apply_continentalarea_to_landarea_conversion_factor(wgdata, conversion):
         """
         Applies the conversion factor from mm in relation to continental area to mm in relation to land area.
 

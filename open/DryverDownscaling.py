@@ -14,9 +14,9 @@ from numba.types import intc, CPointer, float64, intp, voidptr
 from scipy.ndimage import generic_filter
 from scipy import LowLevelCallable
 
-from DownstreamGrid import get_inflow_sum, get_downstream_grid
-from ModifiedFlowAcc import FlowAccTT
-from DownScaleArray import DownScaleArray
+from open.DownstreamGrid import get_inflow_sum, get_downstream_grid
+from open.ModifiedFlowAcc import FlowAccTT
+from open.DownScaleArray import DownScaleArray
 
 def jit_filter_function(filter_function):
     """Decorator for use with scipy.ndimage.generic_filter."""
@@ -151,7 +151,7 @@ class DryverDownscaling:
                                                                          * 24 * 60 * 60) * 1000000000)
             cellrunoff15s = self.disaggregate(cellrunoffm3s, 120) / (120 * 120)
             cellrunoff15s[cellrunoff15s == -99] = np.nan
-            cellrunoff15s = self.mask_wg_with_hs(cellrunoff15s)
+            cellrunoff15s = self.mask_wg_with_hydrosheds(cellrunoff15s)
             return self.flow_acc(cellrunoff15s)
 
         elif self.dconfig.runoffsrc == 'totalrunoff':
@@ -238,7 +238,7 @@ class DryverDownscaling:
                            write_raster_trigger=True).load_data(result.astype(np.float32),
                                                                 '15sec_dis_{}_{:02d}'.format(year, month))
         elif self.dconfig.write_result == 'nc':
-            gt = self.staticdata['hsgt']
+            gt = self.staticdata['hydrosheds_geotrans']
             lon = [gt[0] + gt[1] * x for x in range(result.shape[1])]
             lat = [gt[3] - gt[1] * x for x in range(result.shape[0])]
             timestep = [month + (year - self.dconfig.startyear) * 12]
@@ -295,18 +295,18 @@ class DryverDownscaling:
         interpolated_smooth_15s = self.disaggregate(tmp_smooth, 24)
         del tmp_interp
         if self.dconfig.l12harm:
-            masked_diss_tmp_smooth = self.harmonize_l12_hs(interpolated_smooth_15s)
+            masked_diss_tmp_smooth = self.harmonize_l12_hydrosheds(interpolated_smooth_15s)
         else:
-            masked_diss_tmp_smooth = self.mask_wg_with_hs(interpolated_smooth_15s)
+            masked_diss_tmp_smooth = self.mask_wg_with_hydrosheds(interpolated_smooth_15s)
         del interpolated_smooth_15s
         conv = self.convert_runoff_to_dis(masked_diss_tmp_smooth, **kwargs)
-        if self.dconfig.glolakredist:
+        if self.dconfig.correct_global_lakes:
             # modification of reliable surfacerunoff with glolak and glores
-            glolakresfr = self.staticdata['glolakresfr']
+            globallakes_fraction = self.staticdata['globallakes_fraction']
             gloaddition = self.disaggregate_smth(self.get_30min_array(self.data['gloaddition'] /
                                                                       (self.daysinmonthdict[kwargs['month']]
                                                                        * 24 * 60 * 60) * 1000000000, float(0)), 120)
-            conv = conv - (glolakresfr * gloaddition)
+            conv = conv - (globallakes_fraction * gloaddition)
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
                 conv = np.where(conv < 0, 0, conv)
@@ -343,8 +343,8 @@ class DryverDownscaling:
         lower = self.interpolation_to_grid(points, '30min',
                                            alg="invdistnn:power=1.0:smoothing=0.0:radius=20"
                                                ":min_points=1:max_points=9:nodata=-99")
-        new_surface_runoff_landmm = self.stack(upper, lower)
-        return new_surface_runoff_landmm
+        new_surface_runoff_land_mm = self.stack(upper, lower)
+        return new_surface_runoff_land_mm
 
     def get_30min_array(self, s, nan=-99):
         array = np.full((360, 720), nan)
@@ -483,7 +483,7 @@ class DryverDownscaling:
         del outr
         return res
 
-    def mask_wg_with_hs(self, wg):
+    def mask_wg_with_hydrosheds(self, wg):
         """
         Mask dissaggregated a DownScaleArray with a Hydrosheds rasterfile like flow directions.
 
@@ -497,11 +497,11 @@ class DryverDownscaling:
         :return: masked and clipped DownScaleArray
         :rtype: np.array
         """
-        hsar = self.staticdata['pixelarea']
-        array = np.full(hsar.shape, np.nan)
-        hsgt = self.staticdata['hsgt']
-        coloffset = int(round(self.dconfig.aoi[0][0] - hsgt[0]) // 0.5 * 120 * -1)
-        rowoffset = int(round(self.dconfig.aoi[1][1] - hsgt[3]) // 0.5 * 120)
+        hydrosheds_ar = self.staticdata['pixelarea']
+        array = np.full(hydrosheds_ar.shape, np.nan)
+        hydrosheds_geotrans = self.staticdata['hydrosheds_geotrans']
+        coloffset = int(round(self.dconfig.aoi[0][0] - hydrosheds_geotrans[0]) // 0.5 * 120 * -1)
+        rowoffset = int(round(self.dconfig.aoi[1][1] - hydrosheds_geotrans[3]) // 0.5 * 120)
         offset = wg[rowoffset:, coloffset:]
         rowix = array.shape[0] - offset.shape[0]
         colix = array.shape[1] - offset.shape[1]
@@ -511,14 +511,14 @@ class DryverDownscaling:
             colix = array.shape[1]
         wgdata = offset[:rowix,
                         :colix]
-        array[~np.isnan(hsar)] = wgdata[~np.isnan(hsar)]
+        array[~np.isnan(hydrosheds_ar)] = wgdata[~np.isnan(hydrosheds_ar)]
         # Setting new area of interest as array is clipped
-        # wg.aoi = ((round(hsgt[0]), round(hsgt[0]) + array.shape[1]//240),
-                  # (round(hsgt[3] - array.shape[0] // 240), round(hsgt[3])))
+        # wg.aoi = ((round(hydrosheds_geotrans[0]), round(hydrosheds_geotrans[0]) + array.shape[1]//240),
+                  # (round(hydrosheds_geotrans[3] - array.shape[0] // 240), round(hydrosheds_geotrans[3])))
         # self.wg.aoi = wg.aoi
         return array
 
-    def harmonize_l12_hs(self, ar):
+    def harmonize_l12_hydrosheds(self, ar):
         oldflat = ar.flatten()
         newflat = oldflat.copy()
         newflat[:] = np.nan
@@ -655,15 +655,15 @@ class DryverDownscaling:
         cellpourpixel = self.staticdata['cellpourpixel']
         correcteddis = correcteddis * cellpourpixel
         tmp_maxaccudis30min = self.aggmax(correcteddis, 120)
-        dis_largerivers_hs_30min = tmp_maxaccudis30min * lrivermask
-        cell_dis_contribution_hs = dis_largerivers_hs_30min - get_inflow_sum(dis_largerivers_hs_30min,
+        dis_largerivers_hydrosheds_30min = tmp_maxaccudis30min * lrivermask
+        cell_dis_contribution_hydrosheds = dis_largerivers_hydrosheds_30min - get_inflow_sum(dis_largerivers_hydrosheds_30min,
                                                                              fd)
-        cell_dis_contribution_dif = cell_dis_contribution_wg - cell_dis_contribution_hs
+        cell_dis_contribution_dif = cell_dis_contribution_wg - cell_dis_contribution_hydrosheds
         gapmask = 1 - lrivermask
         transfer_value_grid = gapmask * cell_dis_contribution_dif
         transfer_ddm_grid = fd * (1 - lrivermask)
         transfer_ddm_grid[fd == -99] = -99
-        fa = self.staticdata['30mingapfa']
+        fa = self.staticdata['30mingap_flowacc']
         transfer_accu_grid = FlowAccTT(transfer_ddm_grid, fa, True).get(transfer_value_grid,
                                                                         no_negative_accumulation=False)
         new_diff_dis_30min = correctiongrid + ((cell_dis_contribution_dif + transfer_accu_grid)
@@ -716,7 +716,7 @@ class DryverDownscaling:
         #TODO rename method
         if self.dconfig.mode == 'ts':
             divisionterm = (self.daysinmonthdict[kwargs['month']] * 24 * 60 * 60)
-        elif self.dconfig.mode == 'lta':
+        elif self.dconfig.mode == 'longterm_avg':
             divisionterm = (365 * 24 * 60 * 60)
         else:
             raise Exception()

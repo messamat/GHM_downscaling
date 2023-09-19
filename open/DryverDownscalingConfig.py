@@ -11,7 +11,7 @@ class DownscalingConfig:
         full path to the WaterGAP input folder
     wg_out_path : str
         full path to the WaterGAP output folder which you want to downscale
-    hs_path : str
+    hydrosheds_path : str
         full path to hydrosheds static data
     startyear : int
         startyear of evaluated time period
@@ -21,15 +21,15 @@ class DownscalingConfig:
         path where the output_raster and results in general are written to
     write_raster : bool, default False
         trigger if temporary raster are written
-    mode : {'lta', 'ts'}, default 'ts'
-        mode how Downscaling is run long term average (lta) and timestep (ts) is implemented
+    mode : {'longterm_avg', 'ts'}, default 'ts'
+        mode how Downscaling is run long term average (longterm_avg) and timestep (ts) is implemented
     contintent : {'euassi'}, default 'euassi'
         on which continent or continentcombination you want to process (euassi stands for europe asia and sibira)
     pois : {False, pd.DataFrame}, default False
         if Dataframe provided: points of interest with row and columns for which streamflow is writen into text file
     runoffsrc : {'srplusgwr', 'sr', 'cellrunoff', 'totalrunoff'}, default 'srplusgwr'
         the variables the raw runoff calculation should be based on
-    glolakredist: bool, default True
+    correct_global_lakes: bool, default True
         trigger to decide if correction for global lakes and reservoirs should be executed
     srsmoothing: bool, default False
         trigger to decide if raw runoff should be smoothed and outliers should be removed
@@ -54,7 +54,7 @@ class DownscalingConfig:
     def __init__(self,
                  wg_in_path,
                  wg_out_path,
-                 hs_path,
+                 hydrosheds_path,
                  startyear,
                  endyear,
                  temp_dir,
@@ -64,7 +64,7 @@ class DownscalingConfig:
                  continent='euassi',
                  pois=False,
                  runoffsrc='srplusgwr',
-                 glolakredist=True,
+                 correct_global_lakes=True,
                  srsmoothing=False,
                  l12harm=False,
                  discorr=True,
@@ -74,12 +74,12 @@ class DownscalingConfig:
                  thresholdperskm=0.001,
                  **kwargs):
 
-        if mode not in ['lta', 'ts']:
+        if mode not in ['longterm_avg', 'ts']:
             Exception('"{}"-mode not implemented'.format(mode))
         self.mode = mode
         self.wg_in_path = wg_in_path
         self.wg_out_path = wg_out_path
-        self.hs_path = hs_path
+        self.hydrosheds_path = hydrosheds_path
         self.startyear = startyear
         self.endyear = endyear
         self.temp_dir = temp_dir
@@ -90,7 +90,7 @@ class DownscalingConfig:
         self.continent = continent
         self.pois = pois
         self.runoffsrc = runoffsrc
-        self.glolakredist = glolakredist
+        self.correct_global_lakes = correct_global_lakes
         self.srsmoothing = srsmoothing
         self.l12harm = l12harm
         self.discorr = discorr

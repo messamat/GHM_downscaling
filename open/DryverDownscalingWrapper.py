@@ -8,10 +8,10 @@ import pandas as pd
 from osgeo import gdal
 from codetiming import Timer
 
-from WGData import WGData
-from HSData import HSData
-from DownScaleArray import DownScaleArray
-from DryverDownscaling import run_task
+from open.WGData import WGData
+from open.HydroSHEDS_data import HydroSHEDS_data
+from open.DownScaleArray import DownScaleArray
+from open.DryverDownscaling import run_task
 
 
 class DryverDownscalingWrapper:
@@ -27,28 +27,28 @@ class DryverDownscalingWrapper:
 
     Attributes
     ----------
-    mode : {'lta', 'ts'}
-        mode of downscaling either lta = long term average or ts = timeseries
+    mode : {'longterm_avg', 'ts'}
+        mode of downscaling either longterm_avg = long term average or ts = timeseries
     dconfig : open.DryverDownscalingConfig.DownscalingConfig
-        Configuratio object to run downscaling
+        Configuration object to run downscaling
     kwargs : dict
         kwargs updated with kwargs from DownscalingConfig
     wg : WGData.WGData
         data from WaterGAP
-    hs : HSData.HSData
+    hydrosheds : HydroSHEDS_data.HydroSHEDS_data
         data from HydroSHEDS
     daysinmonth : dict
         Dict with key = month as numeric and value = number of days
     tempdsarray : DownScaleArray
         Container for temporary results is able to write raster and pickle the data
     surfacerunoffbaseddis : None or DownScaleArray
-        Initialized with None holds in downscaling the surface runoff based discharge
+        Initialized with None. Holds in downscaling the surface runoff based discharge
     correcteddis : None or DownScaleArray
-        Initialized with None holds in downscaling corrected discharge
+        Initialized with None. Holds in downscaling corrected discharge
     corrweights : None or DownScaleArray
-        Initialized with None holds spatial distribution of correction weights (on 15 arcsec)
+        Initialized with None. Holds spatial distribution of correction weights (on 15 arcsec)
     correctiongrid : None or DownScaleArray
-        Initialized with None holds correction values with are redistributed (dataset on 30 arcmin)
+        Initialized with None. Holds correction values with are redistributed (dataset on 30 arcmin)
 
     """
     @Timer(name='decorator', text='Setting up the environment and reading necessary data takes {seconds:.0f} s')
@@ -66,12 +66,12 @@ class DryverDownscalingWrapper:
         kwargs.update(config.kwargs)
         self.kwargs = kwargs
         self.wg = WGData(self.dconfig, **kwargs)
-        self.hs = HSData(self.dconfig, **kwargs)
-        self.wg.calc_landmmconversion()
-        self.wg.calc_surface_runoff_landmm()
-        if self.dconfig.mode == 'lta':
-            self.wg.get_lta_version()
-            self.wg.lta_converted = True
+        self.hydrosheds = HydroSHEDS_data(self.dconfig, **kwargs)
+        self.wg.calc_continentalarea_to_landarea_conversion_factor()
+        self.wg.calc_surface_runoff_land_mm()
+        if self.dconfig.mode == 'longterm_avg':
+            self.wg.get_longterm_avg_version()
+            self.wg.longterm_avg_converted = True
         self.daysinmonthdict = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
                                 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
 
@@ -85,23 +85,23 @@ class DryverDownscalingWrapper:
         if self.dconfig.mode == 'ts':
             if staticdata:
                 staticdata = {
-                    'meanlfr': self.wg.landfractions.data.reset_index().groupby('arcid')['landareafr'].mean(),
+                    'meanlfr': self.wg.land_fractions.data.reset_index().groupby('arcid')['landareafr'].mean(),
                     'wginput': self.wg.wginput.data,
                     'coords': self.wg.coords,
-                    'flowacc': self.hs.flowacc,
-                    'landratio_corr': self.hs.get_wg_corespondend_grid(self.wg.landcorrpath),
-                    'largerivermask': self.hs.largerivermask(),
-                    'cellpourpixel': self.hs.get_cellpourpixel(),
-                    '30mingapfa': self.hs.get_wg_corespondend_grid(self.wg.gapfapath),
-                    'keepgrid': self.hs.keepGrid.copy(),
-                    'shiftgrid': self.hs.shiftGrid.copy(),
-                    'upstreampixelarea': self.hs.uparea,
-                    'hsgt': self.hs.hsgt,
-                    'pixelarea': self.hs.paar,
-                    'glolakresfr': self.hs.glolakresfrar
+                    'flowacc': self.hydrosheds.flowacc,
+                    'landratio_corr': self.hydrosheds.get_wg_corresponding_grid(self.wg.landratio_corr_path),
+                    'largerivermask': self.hydrosheds.largerivermask(),
+                    'cellpourpixel': self.hydrosheds.get_cellpourpixel(),
+                    '30mingap_flowacc': self.hydrosheds.get_wg_corresponding_grid(self.wg.gap_flowacc_path),
+                    'keepgrid': self.hydrosheds.keepGrid.copy(),
+                    'shiftgrid': self.hydrosheds.shiftGrid.copy(),
+                    'upstreampixelarea': self.hydrosheds.uparea,
+                    'hydrosheds_geotrans': self.hydrosheds.hydrosheds_geotrans,
+                    'pixelarea': self.hydrosheds.pixarea,
+                    'globallakes_fraction': self.hydrosheds.globallakes_fraction_ar
                 }
                 if self.dconfig.l12harm:
-                    staticdata['l12harmdata'] = self.hs.l12harmdata
+                    staticdata['l12harmdata'] = self.hydrosheds.l12harmdata
 
                 with open(self.dconfig.temp_dir + 'staticdata.pickle', 'wb') as f:
                     pickle.dump(staticdata, f)
@@ -111,7 +111,7 @@ class DryverDownscalingWrapper:
                 for yr in range(self.dconfig.startyear, self.dconfig.endyear+1):
                     for mon in range(1, 13):
                         data = {
-                            'sr': self.wg.surface_runoff_landmm.data.set_index(['arcid',
+                            'sr': self.wg.surface_runoff_land_mm.data.set_index(['arcid',
                                                                                 'month',
                                                                                 'year'])['variable'].loc[
                                 slice(None), mon, yr],
@@ -132,7 +132,7 @@ class DryverDownscalingWrapper:
                                                                                 'year'])['variable'].loc[
                                                                                         slice(None), mon, yr],
                         }
-                        if self.dconfig.glolakredist:
+                        if self.dconfig.correct_global_lakes:
 
                             data['gloaddition'] = self.wg.gloaddition.loc[slice(None), yr, mon]
 
@@ -144,7 +144,7 @@ class DryverDownscalingWrapper:
             if config:
                 self.dconfig.pickle()
 
-        del self.hs
+        del self.hydrosheds
         del self.wg
 
 

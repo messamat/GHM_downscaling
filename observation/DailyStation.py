@@ -124,4 +124,4 @@ class DailyStationData:
                           title='{}_{}'.format(self.station_data['Station identifier'],
                                                self.station_data['Station name']))
             fig.update_layout(font_size=24)
-            fig.write_html(outpath)
+            fig.write_html(out_path)

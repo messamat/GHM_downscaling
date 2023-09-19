@@ -73,10 +73,10 @@ class StationHarmonization(StationComparison):
         self.rbisdf = pd.concat([self.rbisdf, tempdf], axis=1)
 
 
-def eurasia(outpath):
+def eurasia(out_path):
         sy = 1901
         ey = 2019
-        hspath = '/home/home8/dryver/hs_dirmodified_rbisupd/'
+        hydrosheds_path = '/home/home8/dryver/hydrosheds_dirmodified_rbisupd/'
         bp = '/home/home8/dryver/streamflow_daily/'
         metashp = '/home/home1/gm/projects/DRYvER/03_data/07_streamflowdata/04_stations/stations_europe/validation_stations_europe.shp'
         nottoeval = (
@@ -291,13 +291,13 @@ def eurasia(outpath):
             'f50e731a811f42c58c0b499215bd86d9',
             '7c610ada6d4b415980cfe6e124ed5727'
         )
-        sm = getstationmetadict(hspath, metashp, 'euassi', stationsnottoevaluate=nottoeval)
+        sm = getstationmetadict(hydrosheds_path, metashp, 'euassi', stationsnottoevaluate=nottoeval)
         sc = StationHarmonization(sy, ey, bp, sm, 'D')
         sc.read_obs()
         sc.remove_rbis_duplicates()
         df = pd.concat([sc.grdcdf, sc.gsimdf, sc.rbisdf], axis=1)
         df.columns = [x[1] for x in df.columns]
-        df.to_csv(outpath)
+        df.to_csv(out_path)
         pass
 
 

@@ -1,8 +1,8 @@
 import arcpy
 
 
-def combine_flow_direction_raster(hsflowdirgdbpath, continentlist , outpath):
-    arcpy.env.workspace = hsflowdirgdbpath
+def combine_flow_direction_raster(hsflowdir_gdbpath, continentlist , outpath):
+    arcpy.env.workspace = hsflowdir_gdbpath
     if len(continentlist) > 1:
         arcpy.MosaicToNewRaster_management(input_rasters=";".join(['{}_dir_15s'.format(x) for x in continentlist]),
                                            output_location=outpath,

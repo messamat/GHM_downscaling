@@ -7,15 +7,15 @@ from observation.DailyStation import DailyStationData
 
 class GRDCStation(DailyStationData):
 
-    def __init__(self, station_id, fpath, station_data):
+    def __init__(self, station_id, f_path, station_data):
         super().__init__(station_data)
         self.sid = station_id
-        self.grdc_basepath = fpath
+        self.grdc_basepath = f_path
 
     def read_daily_data(self):
-        datapath = '{}{}.txt'.format(self.grdc_basepath + '01_grdc/', self.sid)
-        if path.exists(datapath):
-            df = pd.read_csv(datapath,
+        data_path = '{}{}.txt'.format(self.grdc_basepath + '01_grdc/', self.sid)
+        if path.exists(data_path):
+            df = pd.read_csv(data_path,
                              comment='#',
                              sep=';',
                              parse_dates=[1],

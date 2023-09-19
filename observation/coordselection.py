@@ -4,7 +4,7 @@ import numpy as np
 
 
 def main():
-    fa_path = '/home/home8/dryver/hs/rhone_flowacc_15s.tif'
+    fa_path = '/home/home8/dryver/hydrosheds/rhone_flowacc_15s.tif'
 
     calstations = pd.read_csv('calstations.csv', sep=';', decimal=',')
     fa = gdal.Open(fa_path)
@@ -22,14 +22,14 @@ def main():
         if xmin < lon < xmax and ymin < lat < ymax:
             wgcolindex = (lon - xmin)//0.5
             wgrowindex = (ymax - lat) // 0.5
-            hscolindex = int(wgcolindex * 120)
-            hsrowindex = int(wgrowindex * 120)
-            sel = faar[hsrowindex:hsrowindex + 120, hscolindex: hscolindex+120]
+            hydrosheds_colindex = int(wgcolindex * 120)
+            hydrosheds_rowindex = int(wgrowindex * 120)
+            sel = faar[hydrosheds_rowindex:hydrosheds_rowindex + 120, hydrosheds_colindex: hydrosheds_colindex+120]
             if np.max(sel) > -99:
                 ind = np.unravel_index(np.argmax(sel, axis=None), sel.shape)
-                arrayindex[calstations.loc[stix, 'grdc_no']] = {'idx': (ind[0] + hsrowindex, ind[1] + hscolindex),
+                arrayindex[calstations.loc[stix, 'grdc_no']] = {'idx': (ind[0] + hydrosheds_rowindex, ind[1] + hydrosheds_colindex),
                                                                 'meta': calstations.loc[stix, :]}
-                arrayindex2[str(calstations.loc[stix, 'grdc_no'])] = [ind[0] + hsrowindex, ind[1] + hscolindex,
+                arrayindex2[str(calstations.loc[stix, 'grdc_no'])] = [ind[0] + hydrosheds_rowindex, ind[1] + hydrosheds_colindex,
                                                                  calstations.loc[stix, 'to_ArcIDWL'],
                                                                  'calstation']
     # mm stations
@@ -52,7 +52,7 @@ def main():
 
     df = pd.DataFrame(arrayindex2).T.reset_index()
     df.columns = ['stationid', 'row', 'col', 'arcid', 'origin']
-    df.to_csv('grdc_hsrowcol_extended_rhone.csv')
+    df.to_csv('grdc_hydrosheds_rowcol_extended_rhone.csv')
     pass
 
 

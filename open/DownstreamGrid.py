@@ -27,21 +27,41 @@ def get_downstream_grid(grid, flowdir, outgrid):
         if raster.RasterXSize != fd.RasterXSize or raster.RasterYSize != fd.RasterYSize:
             raise Exception("grid and flowdir not same dimension")
         gridband = raster.GetRasterBand(1)
-        fdband = fd.GetRasterBand(1)
-        fdar = fdband.ReadAsArray()
         grar = gridband.ReadAsArray()
 
+        fdband = fd.GetRasterBand(1)
+        fdar = fdband.ReadAsArray()
+
+
     newar = grar.copy()
-    for dire, xm, ym in [(1, 0, 1), (2, 1, 1), (4, 1, 0), (8, 1, -1), (16, 0, -1),
-                         (32, -1, -1), (64, -1, 0), (128, -1, 1)]:
+
+    #List of tuples showing for each value in the direction raster (first value in each tuple), what the upstream
+    # direction translates to in terms of cell shift along the rows (second value in each tuple) and
+    # columns (third value in each tuple) of the raster (the xm and ym DO NOT correspond to longitude and latitude but
+    # row and column indices in numpy arrays).
+    #The original flow direction grid values correspond to the following:
+    #       | 32| 64|128|
+    #       | 16|   |1  |
+    #       |  8|  4|2  |
+    # For example, (1, 0, 1) therefore, a flowdir of 1 means a shift by 0 rows (x) and 1 column (y)
+
+    flowdir_conversion_list = [(1, 0, 1), (2, 1, 1),
+                               (4, 1, 0), (8, 1, -1),
+                               (16, 0, -1),(32, -1, -1),
+                               (64, -1, 0), (128, -1, 1)]
+
+    for dire, xm, ym in flowdir_conversion_list:
         ix = np.where(fdar == dire)
         downxix = ix[0] + xm
         downyix = ix[1] + ym
-        downxix[downxix == grar.shape[0]] = grar.shape[0]-1
-        downyix[downyix == grar.shape[1]] = grar.shape[1]-1
+        ##Tes what these lines really do
+        downxix[downxix == grar.shape[0]] = grar.shape[0]-1 #For the last row, assign the values of the second to last row?
+        downyix[downyix == grar.shape[1]] = grar.shape[1]-1 #For the last column, assign the values of the second to last column?
+        ##
         downxix[downxix < 0] = 0
         downyix[downyix < 0] = 0
-        newar[ix] = grar[downxix, downyix]
+        newar[ix] = grar[downxix, downyix] #Assign grid value of the downstream area to each pixel
+
     if mode == 'raster':
         driver = gdal.GetDriverByName('GTiff')
         outRaster = driver.CreateCopy(outgrid, raster, 0)

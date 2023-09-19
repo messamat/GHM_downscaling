@@ -8,18 +8,18 @@ import numpy as np
 
 
 class FlowAnimation:
-    def __init__(self, tifpath, outpath, vmin, vmax):
-        self.tifpath = tifpath
+    def __init__(self, tif_path, out_path, vmin, vmax):
+        self.tif_path = tif_path
         self.tempdir = tempfile.TemporaryDirectory()
         self.vminmax = (vmin, vmax)
-        self.write_gif(outpath)
+        self.write_gif(out_path)
 
     def write_gif(self, outfn):
         img_list = self.generate_images()
         imageio.mimwrite(outfn, img_list)
 
     def generate_images(self):
-        tiffiles = glob.glob(self.tifpath +'*.tif')
+        tiffiles = glob.glob(self.tif_path +'*.tif')
         img_list = []
         for tiffile in tiffiles:
             img_list.append(imageio.imread(self.get_map(tiffile)))
