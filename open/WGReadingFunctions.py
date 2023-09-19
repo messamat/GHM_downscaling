@@ -12,13 +12,16 @@ class WaterGAPData(object):
 
     def parametrize(self, parameters):
         """
-        paramtrize the self.data by joining data to it
+        parametrize the self.data by joining data to it:
+        country, continental surface area in the cell, LDD (local drain direction — WaterGAP flow direction)
 
         :param parameters: additional parameters which should be added to data, either a list or a string
         :return:
         """
         if self.data is None:
             raise Exception('No data read. Please read data first.')
+
+        #Set arcid as the data index
         if isinstance(self.data, pd.Series):
             new_cols = ['arcid', self.data.name]
             self.data = self.data.reset_index()
@@ -26,17 +29,20 @@ class WaterGAPData(object):
         if 'arcid' in self.data.index.names:
             self.data = self.data.reset_index()
         df = self.data
+
+        #Make sure that requested parameter names are corretly formatted
         if isinstance(parameters, str):
             parameters = [parameters]
         implemented_parameters = ['cont_area', 'LDD', 'country']
         for parameter in parameters:
             if parameter not in implemented_parameters:
                 raise NotImplementedError
+
+        #Get parameter table and join it to self.data
         if any(['cont_area' in parameters, 'LDD' in parameters, 'country' in parameters]):
             join_df = pd.read_csv(path.normpath(path.dirname(__file__) +
                                                 '/../constants/' +
-                                                self.landmask +
-                                                '_ArcID_country_LDD_contarea.txt'),
+                                                '{}_ArcID_country_LDD_contarea.txt'.format(self.landmask)),
                                   sep='\t')
             df = df.merge(join_df, left_on='arcid', right_on='Arc_ID', how='right')
             df = df.drop('Arc_ID', axis=1)
@@ -56,10 +62,9 @@ class WaterGAPData(object):
         self.greenland_dropped = True
         return self
 
-
-class Unf(WaterGAPData):
+class Unf(WaterGAPData): #UNF is the file format of WaterGAP input and output files
     def __init__(self, **kwargs):
-        super().__init__()
+        super().__init__() #Makes Unf inherit methods from "superclass" i.e. WaterGAPData
         self.filename = None
         self.dtype = None
         self.time_step = None
@@ -78,7 +83,7 @@ class Unf(WaterGAPData):
         if self.filename is None:
             raise ValueError('No filename existing.')
         if len(self.filename) < 5:
-            raise ValueError('Filename is to short.')
+            raise ValueError('Filename is too short.')
         unf_dtypes = {
             'UNF0': ['>f4', np.float32],
             'UNF1': ['>b', bytes],
@@ -116,7 +121,7 @@ class Unf(WaterGAPData):
 
     def analyze_filename(self):
         """
-        Analyze filename for further information on dtype, datastructure and additonal information
+        Analyze filename for further information on dtype, datastructure and additional information
 
         :return self:
         """
@@ -124,6 +129,7 @@ class Unf(WaterGAPData):
             self.dtype = self.get_dtype()
         if self.time_step is None or self.ncols is None:
             self.time_step, self.ncols = self.get_timestep()
+            
         # get additional information
         data_attributes = {}
         split_fname = self.filename.split('.')
@@ -151,8 +157,14 @@ class Unf(WaterGAPData):
         else:
             raise Exception('Something wrent wrong here!')
         return base_name, data_attributes
-
-    def select_arcids(self, arcids):
+    
+    def select_arcids(self, arcids): 
+        """
+        Subset grid cells by id (i.e. arcid)
+        
+        :param arcids: list of cell ids
+        :return self:
+        """
         if self.data is None:
             raise Exception('No data read.')
         if arcids == [0]:
@@ -173,158 +185,28 @@ class Unf(WaterGAPData):
             other_unf = other
         else:
             other_unf = read_unf_file(other, **kwargs)
+            
         if (self.time_step != other_unf.time_step
                 or self.nrows != other_unf.nrows
                 or self.ncols != other_unf.ncols
                 or self.vars != other_unf.vars):
             raise Exception('Other Unffile doesnt fit to the first one')
+        
         if verify_integrity:
             a = self.data.set_index([x for x in self.data.columns if x != self.vars[0]])
             b = other_unf.data.set_index([x for x in other_unf.data.columns if x != other_unf.vars[0]])
             self.data = a.append(b, verify_integrity=True).reset_index()
         else:
             self.data = self.data.append(other_unf.data)
+            
         return self
 
 
-class InputDir:
-    def __init__(self):
-        self.data = None
-
-    def read(self, path, explain=True, files='all', additional_files=True, drop_greenland=False, **kwargs):
-        """
-        Reads watergap input dir and returns a pandas dataframe with information
-
-        """
-        if files == 'all':
-            relevant_files = [
-                "GALTMOD.UNF0",
-                "G_AQ_FACTOR.UNF1",
-                "G_ARID_HUMID.UNF2",
-                "G_BANKFULL.UNF0",
-                "GBUILTUP.UNF0",
-                "GCONTFREQ.UNF0",
-                "GCOUNTRY.UNF2",
-                # "GCRC.UNF4",
-                "GC.UNF2",
-                # "G_ELEV_RANGE.101.UNF2",
-                "G_FLOWDIR.UNF2",
-                "G_FRACTRETURNGW_IRRIG.UNF0",
-                "G_GLOLAK.UNF0",
-                "G_GLOWET.UNF0",
-                "G_GW_FACTOR_CORR.UNF0",
-                "G_LAKAREA.UNF0",
-                "G_LANDCOVER.UNF1",
-                "G_LOCLAK.UNF0",
-                "G_LOCRES.UNF0",
-                "G_LOCWET.UNF0",
-                "GLWDunits.UNF4",
-                "G_MEANDERING_RATIO.UNF0",
-                # "G_MEAN_OUTFLOW.12.UNF0",
-                "G_MEAN_OUTFLOW.UNF0",
-                "G_NUs_1971_2000.UNF0",
-                "G_OUTFLOW_CELL_ASSIGNMENT.UNF4",
-                "G_PERMAGLAC.UNF1",
-                "G_REGLAKE.UNF0",
-                "G_REG_LAKE.UNF1",
-                "G_RESAREA.UNF0",
-                "G_RES_TYPE.UNF1",
-                "G_ROUGHNESS.UNF0",
-                "GR.UNF2",
-                "G_SLOPE_CLASS.UNF1",
-                "G_START_YEAR.UNF4",
-                "G_STORAGE_CAPACITY.UNF0",
-                "G_TAWC.UNF0",
-                "G_TEXTURE.UNF1"]
-        else:
-            relevant_files = files
-
-        explanation = {
-            "GALTMOD.UNF0": ["altitude", "average altitude in cell used to calculate the slope"],
-            "G_AQ_FACTOR.UNF1": ["aquifer factor", "aquifer factor ranges between 0 and 100 is used in the calculation"
-                                                   "of groundwater factor"],
-            "G_BANKFULL.UNF0": ["bankfull flow", "used to calculate river width and depth bankfull"],
-            "GBUILTUP.UNF0": ["built-up cellfrac", "cell area fraction with built structures 0-1"],
-            "GCONTFREQ.UNF0": ['continental fraction', "fraction of cellarea which is on continent (land and surface"
-                                                       " water bodies)"],
-            "G_FLOWDIR.UNF2": ["flow direction", "flow direction of this cell following the esri convention"],
-            "G_FRACTRETURNGW_IRRIG.UNF0": ['fraction return flow into gw', 'fraction of the return flow from irrig,'
-                                                                           ' which ends up in the gw'],
-            "G_GLOLAK.UNF0": ["global lakes cellfrac",
-                              "fraction of cellarea which are occupied by global lakes 0 -100"],
-            "G_GLOWET.UNF0": ["global wetland cellfrac", "fraction of cellarea which are occupied by global "
-                                                         "wetlands 0 -100"],
-            "G_LAKAREA.UNF0": ["lake area km2", ""],
-            "G_LANDCOVER.UNF1": ["landcover type", "# Land cover types are:\n "
-                                                   "1: Evergreen needle leaf forest\n"
-                                                   "2: Evergreen broadleaf forest\n"
-                                                   "# 3: Deciduous needle leaf forest\n"
-                                                   "# 4: Deciduous broadleaf forest\n"
-                                                   "# 5: Mixed forest\n"
-                                                   "# 6: Closed Shrubland\n"
-                                                   "# 7: Open Shrubland\n"
-                                                   "# 8: Woody Savanna\n"
-                                                   "# 9: Savanna\n"
-                                                   "# 10: Grassland\n"
-                                                   "# 11: Permanent Wetland\n"
-                                                   "# 12: Cropland\n"
-                                                   "# 13: Urban and built up\n"
-                                                   "# 14: Cropland/ natural vegetation mosaik\n"
-                                                   "# 15: Snow and Ice\n"
-                                                   "# 16: Barren or sparsely vegetated\n"
-                                                   "# 17: Water bodies (for WaterGAP lake cells only)\n"
-                                                   "# 18: Cropland/ permanent crops\n"],
-
-        }
-
-        inputdata = pd.DataFrame()
-        for inputfile in relevant_files:
-            x = read_unf_file(path + inputfile)
-            if drop_greenland:
-                x = x.drop_greenland()
-                x = x.data.iloc[:, 0]
-            else:
-                x = x.data.set_index('arcid').iloc[:, 0]
-            if inputfile in explanation.keys() and explain:
-                x.name = explanation[inputfile][0]
-            else:
-                x.name = inputfile
-            inputdata = inputdata.merge(x, left_index=True, right_index=True, how='outer')
-
-        if additional_files:
-            cellarea = True
-            elev_range = True
-        else:
-            if 'cellarea' in kwargs:
-                cellarea = kwargs['cellarea']
-            else:
-                cellarea = False
-            if 'elev_range' in kwargs:
-                elev_range = kwargs['elev_range']
-            else:
-                elev_range = False
-
-        if cellarea:
-            garea = np.fromfile(path + 'GAREA.UNF0', dtype='>f4').astype(float)
-            inputdata['cellarea'] = [garea[x-1] for x in inputdata['GR.UNF2']]
-        if elev_range:
-            elev_range = np.fromfile(path + "G_ELEV_RANGE.101.UNF2", dtype='>H').astype(int)
-
-            elev_range = pd.DataFrame(elev_range.reshape((inputdata.shape[0], 101)),
-                                      columns=['elev_range_{}'.format(x) for x in range(1, 102)])
-            inputdata['elev_range'] = elev_range.values.tolist()
-        # self.data = pd.concat([inputdata.reset_index(), elev_range], axis=1)
-        if 'select_arcids' in kwargs:
-            inputdata = inputdata.loc[kwargs['select_arcids'], :]
-        self.data = inputdata
-        return self
-
-
-def read_variable(simoutput_path, var, timestep, startyear, endyear, arcid_list=[0], **kwargs):
+def read_variable(wg_simoutput_path, var, timestep, startyear, endyear, arcid_list=[0], **kwargs):
     """
-    Read in multiple unf files from an model output path into an unf object
+    Read in multiple unf files from a model output path into an unf object
 
-    :param simoutput_path: The path to the output files of WaterGAP (needs to end with '/')
+    :param wg_simoutput_path: The path to the output files of WaterGAP (needs to end with '/')
     :param var: Variable of unf file e.g. 'G_TOTAL_STORAGE_mm_'
     :param timestep: 'month', 'year', 'day'
     :param startyear: int e.g. 1901
@@ -334,13 +216,13 @@ def read_variable(simoutput_path, var, timestep, startyear, endyear, arcid_list=
 
     :return: A list of files read in into the object
     """
-    filenames = get_filenames(basepath=simoutput_path, var=var,
+    filenames = get_filenames(basepath=wg_simoutput_path, var=var,
                               startyear=startyear, endyear=endyear, timestep=timestep)
     if len(filenames) == 0:
         raise Exception('Wrong parameters were given')
     else:
-        unf_files = [read_unf_file(filename, **kwargs) for filename in filenames]
-        unf_files = [unf_file.select_arcids(arcid_list) for unf_file in unf_files]
+        unf_files = [unf_file.select_arcids(arcid_list) for unf_file in
+                     [read_unf_file(filename, **kwargs) for filename in filenames]]
 
         result = unf_files[0]
         for i in range(1, len(unf_files)):
@@ -388,8 +270,8 @@ def read_unf_file(filepath, **kwargs):
     }
 
     landmask_ref = {
-        66896: 'slm',
-        67420: 'wlm'
+        66896: 'slm', #number of cells in DDM30 routing network landmask
+        67420: 'wlm' #number of cells in CRU landmask (the WG climate forcing data landmask)
     }
 
     var_dict = {
@@ -538,6 +420,7 @@ def read_unf_file(filepath, **kwargs):
                      'mass_unit': None,
                      'area_unit': None}
     }
+
     unf_instance = Unf()
     unf_instance.filename = path.split(filepath)[-1]
     if unf_instance.filename is None:
@@ -545,11 +428,13 @@ def read_unf_file(filepath, **kwargs):
     if len(unf_instance.filename) < 5:
         raise ValueError('Filename is to short.')
     basename, data_attributes = unf_instance.analyze_filename()
+
     # read in data
     data = np.fromfile(filepath, dtype=unf_instance.dtype[0]).astype(unf_instance.dtype[1])
-    unf_instance.nrows = int(data.shape[0]/unf_instance.ncols)
+    unf_instance.nrows = int(data.shape[0] / unf_instance.ncols) #wg data are unidimensional
     unf_instance.landmask = landmask_ref[unf_instance.nrows]
-    # get arcids
+
+    # get arcids and cast to two-dimensional data.frame
     arcid_ref = pd.read_csv(path.normpath(path.dirname(__file__) +
                                           '/../constants/' +
                                           landmask_ref[unf_instance.nrows] +
@@ -557,16 +442,25 @@ def read_unf_file(filepath, **kwargs):
                             sep='\t')
     data = pd.DataFrame(data.reshape((unf_instance.nrows, unf_instance.ncols)),
                         columns=range(1, 1 + unf_instance.ncols))
+
     # restrict to days in month
     if unf_instance.ncols == 31:
         data = data.iloc[:, :days_in_month[data_attributes['month']]]
+
+    #Add ArcID column
     data = data.assign(arcid=arcid_ref.loc[:, 'ArcID'])
+
+    #If dimension does not match corresponding landmask (DDM30 or CRU), remove NAs
     if unf_instance.nrows not in landmask_ref.values():
         data.dropna(inplace=True)
+
+    #Identify variable name
     try:
         var_name = var_dict[basename]['var_name']
     except KeyError:
         var_name = 'variable'
+
+    #If time series data, format to long form
     if unf_instance.time_step == 'static':
         data.columns = [var_name, 'arcid']
         unf_instance.data = data
@@ -577,12 +471,15 @@ def read_unf_file(filepath, **kwargs):
         if unf_instance.ncols == 31:
             data = data.assign(month=int(data_attributes['month']))
         data = data.assign(year=int(data_attributes['year']))
+
         # dtype conversion
-        dtype_dict = {col[0]: col[1]for col in [('arcid', 'int32'),
-                                                ('month', 'int8'),
-                                                ('year', 'int16'),
-                                                ('day', 'int8')] if col[0] in data.columns}
+        dtype_dict = {col[0]: col[1] for col in [('arcid', 'int32'),
+                                                 ('month', 'int8'),
+                                                 ('year', 'int16'),
+                                                 ('day', 'int8')] if col[0] in data.columns}
         data = data.astype(dtype_dict)
+
+        #Assign resulting data to unf_instance
         unf_instance.data = data
     else:
         raise ValueError('No timestep given')
@@ -596,3 +493,141 @@ def read_unf_file(filepath, **kwargs):
     if 'select_arcids' in kwargs.keys():
         unf_instance.select_arcids(kwargs['select_arcids'])
     return unf_instance
+
+class InputDir:
+    def __init__(self):
+        self.data = None
+
+    def read(self, path, explain=True, files='all', additional_files=True, drop_greenland=False, **kwargs):
+        """
+        Reads watergap input dir and returns a pandas dataframe with information
+
+        """
+        if files == 'all':
+            relevant_files = [
+                "GALTMOD.UNF0",
+                "G_AQ_FACTOR.UNF1",
+                "G_ARID_HUMID.UNF2",
+                "G_BANKFULL.UNF0",
+                "GBUILTUP.UNF0",
+                "GCONTFREQ.UNF0",
+                "GCOUNTRY.UNF2",
+                # "GCRC.UNF4",
+                "GC.UNF2",
+                # "G_ELEV_RANGE.101.UNF2",
+                "G_FLOWDIR.UNF2",
+                "G_FRACTRETURNGW_IRRIG.UNF0",
+                "G_GLOLAK.UNF0",
+                "G_GLOWET.UNF0",
+                "G_GW_FACTOR_CORR.UNF0",
+                "G_LAKAREA.UNF0",
+                "G_LANDCOVER.UNF1",
+                "G_LOCLAK.UNF0",
+                "G_LOCRES.UNF0",
+                "G_LOCWET.UNF0",
+                "GLWDunits.UNF4",
+                "G_MEANDERING_RATIO.UNF0",
+                # "G_MEAN_OUTFLOW.12.UNF0",
+                "G_MEAN_OUTFLOW.UNF0",
+                "G_NUs_1971_2000.UNF0",
+                "G_OUTFLOW_CELL_ASSIGNMENT.UNF4",
+                "G_PERMAGLAC.UNF1",
+                "G_REGLAKE.UNF0",
+                "G_REG_LAKE.UNF1",
+                "G_RESAREA.UNF0",
+                "G_RES_TYPE.UNF1",
+                "G_ROUGHNESS.UNF0",
+                "GR.UNF2",
+                "G_SLOPE_CLASS.UNF1",
+                "G_START_YEAR.UNF4",
+                "G_STORAGE_CAPACITY.UNF0",
+                "G_TAWC.UNF0",
+                "G_TEXTURE.UNF1"]
+        else:
+            relevant_files = files
+
+        explanation = {
+            "GALTMOD.UNF0": ["altitude", "average altitude in cell used to calculate the slope"],
+            "G_AQ_FACTOR.UNF1": ["aquifer factor", "aquifer factor ranges between 0 and 100 is used in the calculation"
+                                                   "of groundwater factor"],
+            "G_BANKFULL.UNF0": ["bankfull flow", "used to calculate river width and depth bankfull"],
+            "GBUILTUP.UNF0": ["built-up cellfrac", "cell area fraction with built structures 0-1"],
+            "GCONTFREQ.UNF0": ['continental fraction', "fraction of cellarea which is on continent (land and surface"
+                                                       " water bodies)"],
+            "G_FLOWDIR.UNF2": ["flow direction", "flow direction of this cell following the esri convention"],
+            "G_FRACTRETURNGW_IRRIG.UNF0": ['fraction return flow into gw', 'fraction of the return flow from irrig,'
+                                                                           ' which ends up in the gw'],
+            "G_GLOLAK.UNF0": ["global lakes cellfrac",
+                              "fraction of cellarea which are occupied by global lakes 0 -100"],
+            "G_GLOWET.UNF0": ["global wetland cellfrac", "fraction of cellarea which are occupied by global "
+                                                         "wetlands 0 -100"],
+            "G_LAKAREA.UNF0": ["lake area km2", ""],
+            "G_LANDCOVER.UNF1": ["landcover type", "# Land cover types are:\n "
+                                                   "1: Evergreen needle leaf forest\n"
+                                                   "2: Evergreen broadleaf forest\n"
+                                                   "# 3: Deciduous needle leaf forest\n"
+                                                   "# 4: Deciduous broadleaf forest\n"
+                                                   "# 5: Mixed forest\n"
+                                                   "# 6: Closed Shrubland\n"
+                                                   "# 7: Open Shrubland\n"
+                                                   "# 8: Woody Savanna\n"
+                                                   "# 9: Savanna\n"
+                                                   "# 10: Grassland\n"
+                                                   "# 11: Permanent Wetland\n"
+                                                   "# 12: Cropland\n"
+                                                   "# 13: Urban and built up\n"
+                                                   "# 14: Cropland/ natural vegetation mosaik\n"
+                                                   "# 15: Snow and Ice\n"
+                                                   "# 16: Barren or sparsely vegetated\n"
+                                                   "# 17: Water bodies (for WaterGAP lake cells only)\n"
+                                                   "# 18: Cropland/ permanent crops\n"],
+
+        }
+
+        inputdata = pd.DataFrame()
+        for inputfile in relevant_files:
+            x = read_unf_file(path.join(path, inputfile))
+            if drop_greenland:
+                x = x.drop_greenland()
+                x = x.data.iloc[:, 0]
+            else:
+                x = x.data.set_index('arcid').iloc[:, 0]
+
+            if inputfile in explanation.keys() and explain:
+                x.name = explanation[inputfile][0]
+            else:
+                x.name = inputfile
+            inputdata = inputdata.merge(x, left_index=True, right_index=True, how='outer')
+
+        if additional_files:
+            cellarea = True
+            elev_range = True
+        else:
+            if 'cellarea' in kwargs:
+                cellarea = kwargs['cellarea']
+            else:
+                cellarea = False
+
+            if 'elev_range' in kwargs:
+                elev_range = kwargs['elev_range']
+            else:
+                elev_range = False
+
+        if cellarea:
+            garea = np.fromfile(path.join(path, 'GAREA.UNF0'), dtype='>f4').astype(float)
+            inputdata['cellarea'] = [garea[x-1] for x in inputdata['GR.UNF2']]
+
+        if elev_range:
+            elev_range = np.fromfile(path.join(path, "G_ELEV_RANGE.101.UNF2"), dtype='>H').astype(int)
+
+            elev_range = pd.DataFrame(elev_range.reshape((inputdata.shape[0], 101)),
+                                      columns=['elev_range_{}'.format(x) for x in range(1, 102)])
+            inputdata['elev_range'] = elev_range.values.tolist()
+        # self.data = pd.concat([inputdata.reset_index(), elev_range], axis=1)
+
+        if 'select_arcids' in kwargs:
+            inputdata = inputdata.loc[kwargs['select_arcids'], :]
+        self.data = inputdata
+        return self
+
+
