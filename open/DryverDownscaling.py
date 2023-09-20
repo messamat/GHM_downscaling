@@ -79,7 +79,7 @@ class DryverDownscaling:
 
         **Runoff smoothing**
 
-        The (boolean) config parameter srsmoothing decides whether the input low resolution (:term:`lr`) runoff
+        The (boolean) config parameter sr_smoothing decides whether the input low resolution (:term:`lr`) runoff
         (:term:`sr` or :term:`sr` + :term:`gwr`) is smoothed. For that the methods
         :func:`~DryverDownscaling.DryverDownscaling.get_smoothed_runoff` ,
         :func:`~DryverDownscaling.DryverDownscaling.scipy_outl_removing` and
@@ -145,7 +145,7 @@ class DryverDownscaling:
         """
         #
         print('timestep {} {} started'.format(month, year))
-        if self.dconfig.runoffsrc == 'cellrunoff':
+        if self.dconfig.runoff_src == 'cellrunoff':
             cellrunoff = self.data['cellrunoffseries'].dropna()
 
             cellrunoffm3s = (self.get_30min_array(cellrunoff, np.nan) / (self.daysinmonthdict[month]
@@ -155,16 +155,16 @@ class DryverDownscaling:
             cellrunoff15s = self.mask_wg_with_hydrosheds(cellrunoff15s)
             return self.flow_acc(cellrunoff15s)
 
-        elif self.dconfig.runoffsrc == 'totalrunoff':
+        elif self.dconfig.runoff_src == 'totalrunoff':
             sr = self.data['totalrunoff']
-        elif self.dconfig.runoffsrc == 'srplusgwr':
+        elif self.dconfig.runoff_src == 'srplusgwr':
             sr = self.data['sr'] + self.data['gwrunoff']
-        elif self.dconfig.runoffsrc == 'sr':
+        elif self.dconfig.runoff_src == 'sr':
             sr = self.data['sr']
         else:
-            raise Exception('{} not implemented as runoffsrc'.format(self.dconfig.runoffsrc))
+            raise Exception('{} not implemented as runoff_src'.format(self.dconfig.runoff_src))
 
-        if self.dconfig.srsmoothing:
+        if self.dconfig.sr_smoothing:
             reliable_surfacerunoff = self.get_smoothed_runoff(sr)
         else:
             # no smoothing at all
@@ -178,7 +178,7 @@ class DryverDownscaling:
         dis.name = 'variable'
         (dis_fg_conv) = self.get_runoff_based_dis(reliable_surfacerunoff, dis, cellrunoffseries,
                                                   month=month, yr=year)
-        if not self.dconfig.discorr:
+        if not self.dconfig.dis_corr:
             return self.flow_acc(dis_fg_conv)
         del reliable_surfacerunoff
         # step8
@@ -190,7 +190,7 @@ class DryverDownscaling:
         else:
             corrweights = self.get_corrweight(dis_fg_conv)
 
-        if self.dconfig.largerivercorr:
+        if self.dconfig.large_river_corr:
             correcteddis = self.calc_corrected_dis(correctiongrid=correctiongrid,
                                                    corrweights=corrweights,
                                                    converted_runoff=dis_fg_conv,
@@ -203,9 +203,9 @@ class DryverDownscaling:
                                                          month=month)
             del correcteddis
 
-        if self.dconfig.corrgridshift:
+        if self.dconfig.corr_grid_shift:
             correctiongrid = self.shift_correctiongrid(correctiongrid)
-        if self.dconfig.corrgridsmoothing:
+        if self.dconfig.coor_grid_smoothing:
             correctiongrid = self.smooth_correctiongrid(correctiongrid)
         correcteddis = self.calc_corrected_dis(correctiongrid=correctiongrid,
                                                corrweights=corrweights,
@@ -285,7 +285,7 @@ class DryverDownscaling:
         -------
 
         """
-        if self.dconfig.srsmoothing:
+        if self.dconfig.sr_smoothing:
             outlier_removed = self.scipy_outl_removing(reliablesurfacerunoff)
             tmp_ds = self.create_inmemory_30min_pointds(outlier_removed, all=True)
         else:
@@ -293,7 +293,7 @@ class DryverDownscaling:
         tmp_interp = self.interpolation_to_grid(tmp_ds, '6min')
         del tmp_ds
         tmp_interp[tmp_interp == -99] = np.nan
-        if self.dconfig.srsmoothing:
+        if self.dconfig.sr_smoothing:
             tmp_smooth = self.spatial_window_averaging(tmp_interp, 5)
         else:
             tmp_smooth = tmp_interp

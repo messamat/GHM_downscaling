@@ -27,23 +27,23 @@ class DownscalingConfig:
         on which continent or continentcombination you want to process (euassi stands for europe asia and sibira)
     pois : {False, pd.DataFrame}, default False
         if Dataframe provided: points of interest with row and columns for which streamflow is writen into text file
-    runoffsrc : {'srplusgwr', 'sr', 'cellrunoff', 'totalrunoff'}, default 'srplusgwr'
+    runoff_src : {'srplusgwr', 'sr', 'cellrunoff', 'totalrunoff'}, default 'srplusgwr'
         the variables the raw runoff calculation should be based on
     correct_global_lakes: bool, default True
         trigger to decide if correction for global lakes and reservoirs should be executed
-    srsmoothing: bool, default False
+    sr_smoothing: bool, default False
         trigger to decide if raw runoff should be smoothed and outliers should be removed
     l12harm: bool, default False
         trigger to decide if raw disaggregated should be averaged out over HydroSHEDS level 12 basins
-    discorr: bool, default True
+    dis_corr: bool, default True
         trigger to decide if correction with net cell runoff resp. discharge of lr model should be applied
-    largerivercorr: bool, default True
+    large_river_corr: bool, default True
         trigger to decide if a correction due to deviating river catchments should be corrected in large rvers
-    corrgridshift: bool, default True
+    corr_grid_shift: bool, default True
         trigger to decide if the correction values are partially shifted downstream
-    corrgridsmoothing: bool, default False
+    coor_grid_smoothing: bool, default False
         trigger to decide if the correction values are smoothed downstream
-    thresholdperskm: double, default 0.001
+    threshold_per_skm: double, default 0.001
         threshold per square kilometer upstream area how much the raw streamflow is allowed to be modified
     aoi: tuple of tuple
         area of interest for which calculations are done
@@ -63,15 +63,15 @@ class DownscalingConfig:
                  mode='ts',
                  continent='euassi',
                  pois=False,
-                 runoffsrc='srplusgwr',
+                 runoff_src='srplusgwr',
                  correct_global_lakes=True,
-                 srsmoothing=False,
+                 sr_smoothing=False,
                  l12harm=False,
-                 discorr=True,
-                 largerivercorr=True,
-                 corrgridshift=True,
-                 corrgridsmoothing=False,
-                 thresholdperskm=0.001,
+                 dis_corr=True,
+                 large_river_corr=True,
+                 corr_grid_shift=True,
+                 coor_grid_smoothing=False,
+                 threshold_per_skm=0.001,
                  **kwargs):
 
         if mode not in ['longterm_avg', 'ts']:
@@ -89,15 +89,15 @@ class DownscalingConfig:
         self.kwargs = kwargs
         self.continent = continent
         self.pois = pois
-        self.runoffsrc = runoffsrc
+        self.runoff_src = runoff_src
         self.correct_global_lakes = correct_global_lakes
-        self.srsmoothing = srsmoothing
+        self.sr_smoothing = sr_smoothing
         self.l12harm = l12harm
-        self.discorr = discorr
-        self.largerivercorr = largerivercorr
-        self.corrgridshift = corrgridshift
-        self.corrgridsmoothing = corrgridsmoothing
-        self.threshold = thresholdperskm
+        self.dis_corr = dis_corr
+        self.large_river_corr = large_river_corr
+        self.corr_grid_shift = corr_grid_shift
+        self.coor_grid_smoothing = coor_grid_smoothing
+        self.threshold = threshold_per_skm
         if 'area_of_interest' in kwargs:
             self.aoi = kwargs['area_of_interest']
         else:
