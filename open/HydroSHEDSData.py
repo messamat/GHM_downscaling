@@ -38,7 +38,7 @@ class HydroSHEDSData:
         self.hydrosheds_geotrans = self.flowdir.GetGeoTransform()
         self.flowacc = FlowAccTT(in_flowdir=self.flowdir.ReadAsArray(), in_flowacc=self.get_flowacc_path())
         self.pixarea, self.uparea = self.get_pixarea_upstream_area()
-        self.globallakes_fraction_ar = self.get_globallakes_fraction()
+        self.globallakes_fraction_15s_ar = self.get_globallakes_fraction()
         self.keepGrid, self.shiftGrid = self.get_downstream_shift_grids()
 
         if config.l12harm:
@@ -88,13 +88,13 @@ class HydroSHEDSData:
         return pixarea, uparea
 
     def get_globallakes_fraction(self):
-        globallakes_fraction_path = os.path.join(self.config.hydrosheds_path,
+        globallakes_fraction_15s_path = os.path.join(self.config.hydrosheds_path,
                                                  '{}_pixareafraction_glolakres_15s.tif'.format(self.config.continent)
                                                  )
-        globallakes_fraction = gdal.Open(globallakes_fraction_path)
-        globallakes_fraction_ar = globallakes_fraction.ReadAsArray().copy()
-        globallakes_fraction_ar[globallakes_fraction_ar == globallakes_fraction.GetRasterBand(1).GetNoDataValue()] = 0
-        return globallakes_fraction_ar
+        globallakes_fraction_15s = gdal.Open(globallakes_fraction_15s_path)
+        globallakes_fraction_15s_ar = globallakes_fraction_15s.ReadAsArray().copy()
+        globallakes_fraction_15s_ar[globallakes_fraction_15s_ar == globallakes_fraction_15s.GetRasterBand(1).GetNoDataValue()] = 0
+        return globallakes_fraction_15s_ar
 
     def get_downstream_shift_grids(self):
         shiftGrid = '{}{}_shiftgrid.tif'.format(self.config.hydrosheds_path, self.config.continent)

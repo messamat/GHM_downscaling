@@ -18,8 +18,9 @@ class PreProcessing:
     - flowdir_30min.tif (rasterfile with flow directions of WaterGAP (DDM30)),
     - orgDDM30area.tif (rasterfile with areas of WaterGAP grid cells),
     - pixareafraction_glolakres_15s.tif (rasterfile with values in HR grid cells which are covered by a global lake or
-      reservoir, the value correspond to the area fraction of a HR grid cell to all global lakes or reservoirs in one
-      LR grid cell )
+      reservoir, the value correspond to the fraction of the area of all global lakes or reservoirs in the LR grid cell
+      contained in the HR grid cell. For example, if an LR grid cell is completely contained within a lake or reservoir,
+      then allHR grid cells within would have a value of 1/14400)
 
     The following files / grids are produced in outputdir:
 
@@ -33,9 +34,10 @@ class PreProcessing:
     - continents_cellpourpoint_15s.tif (HR grid with 1 where the HR grid cell has the maximum upstream area per LR grid
       cell),
     - continents_pixarea_15s.tif (HR grid with area of HR grid cells),
-    - continents_pixareafraction_glolakres_15s.tif (rasterfile with values in HR grid cells which are covered by a
-      global lake or reservoir, the value correspond to the area fraction of a HR grid cell to all global lakes or
-      reservoirs in one LR grid cell),
+    - pixareafraction_glolakres_15s.tif (rasterfile with values in HR grid cells which are covered by a global lake or
+      reservoir, the value correspond to the fraction of the area of all global lakes or reservoirs in the LR grid cell
+      contained in the HR grid cell. For example, if an LR grid cell is completely contained within a lake or reservoir,
+      then allHR grid cells within would have a value of 1/14400)
     - landratio_correction.tif (LR grid on the land to continental area ratio to correct runoff values, is just copied)
 
 
@@ -46,7 +48,7 @@ class PreProcessing:
         pixelarea_path = r'{}pixel_area_skm_15s.gdb\px_area_skm_15s'.format(setup_folder)
         flowdir_05deg = r'{}flowdir_30min.tif'.format(setup_folder)
         area_flowacc_05deg = r"{}orgDDM30area.tif".format(setup_folder)
-        globallakes_fraction = r'{}pixareafraction_glolakres_15s.tif'.format(setup_folder)
+        globallakes_fraction_15s = r'{}pixareafraction_glolakres_15s.tif'.format(setup_folder)
         landratio = r'landratio_correction.tif'
         stations = r'{}stations_europe.geojson'.format(setup_folder)
 
@@ -71,7 +73,7 @@ class PreProcessing:
 
         # compute HR pourpoints of LR cells and clip HR pixel area and HR global lake fractions to
         # union of continents in continentlist
-        get_continental_hsgrids(continentlist, upstreamarea_path, pixelarea_path, globallakes_fraction, outputdir)
+        get_continental_hsgrids(continentlist, upstreamarea_path, pixelarea_path, globallakes_fraction_15s, outputdir)
 
         #Copy 'landratio_correction.tif' to setup folder
         copygrids([landratio], setup_folder, outputdir)

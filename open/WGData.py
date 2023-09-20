@@ -121,7 +121,7 @@ class WGData:
 
             #Prepare time series grids to redistribute changes in lake or reservoir storage at every time step
             # from the outflow cell to all cells intersecting with each global lake and reservoir
-            gloadditionlist = []
+            globallakes_additionlist = []
             for glwdunit in redist_glwd.glwdunit.unique(): #For each global lake
                 redistmp = redist_glwd[redist_glwd.glwdunit == glwdunit].set_index('arcid')
                 outflowcell = redistmp.outflowcell.iloc[0]
@@ -129,28 +129,28 @@ class WGData:
                 if outflowcell not in read_variable_kwargs['arcid_list']:
                     continue
                 #Extract difference in lake or reservoir volume at outflow cell
-                gloaddition = diff_gloresglolak.loc[(outflowcell, slice(None), slice(None)), :].reset_index()
-                gloaddition = gloaddition.loc[gloaddition.year >= config.startyear, 'variable'].values #Subset years within period of interest
+                globallakes_addition = diff_gloresglolak.loc[(outflowcell, slice(None), slice(None)), :].reset_index()
+                globallakes_addition = globallakes_addition.loc[globallakes_addition.year >= config.startyear, 'variable'].values #Subset years within period of interest
 
                 for aid in redistmp.index.get_level_values('arcid'): #For each cell intersecting with the global lake
                     frac = redistmp.loc[aid, 'fracarea'] #Extract the fraction of that cell that intersects with the lake
                     #Remove storage change from outflow cell and redistribute to all cells that intersect with lake
                     if aid == outflowcell:
                         cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] = (
-                                cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] + gloaddition)
+                                cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] + globallakes_addition)
 
                     cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] = (
-                            cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] - (gloaddition * frac))
+                            cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] - (globallakes_addition * frac))
 
                     #Create a df to record storage change for each cell and time step
                     years = [x for x in range(config.startyear, config.endyear+1)]
                     months = [x for x in range(1, 13)]
                     mix = pd.MultiIndex.from_product([[int(aid)], years, months],
                                                      names=['arcid', 'years', 'month'])
-                    gloadditionlist.append(pd.Series(gloaddition*frac, mix))
+                    globallakes_additionlist.append(pd.Series(globallakes_addition*frac, mix))
 
             self.cell_runoff = cell_runoff.reset_index()
-            self.gloaddition = pd.concat(gloadditionlist)
+            self.globallakes_addition = pd.concat(globallakes_additionlist)
         else:
             self.cell_runoff = read_variable(var='G_CELL_RUNOFF_', **read_variable_kwargs).data
 
@@ -336,7 +336,7 @@ class WGData:
 
     def get_30min_array(self, s, nan=-99.):
         """
-        Receive a numpy array in resolution of 30min(720 x 360 of WaterGAP data)
+        Create a numpy array in resolution of 30min(720 x 360 of WaterGAP data) from a pd.Series
 
         Parameters
         ----------

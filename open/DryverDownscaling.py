@@ -40,42 +40,62 @@ def jit_filter_function(filter_function):
 
 class DryverDownscaling:
     """
-    Class that holds the algorithms and methods to conduct the downscaling with prepared data.
-
+        Class that holds the algorithms and methods to conduct the downscaling with prepared data.
+        
     """
-    def __init__(self, datafn, staticdatafn, configfn):
-        with open(datafn, 'rb') as f:
-            self.data = pickle.load(f)
-        with open(staticdatafn, 'rb') as f:
+    def __init__(self, in_taskdata_dict_picklepath, in_staticdata_dict_picklepath, in_config_dict_picklepath):
+        """
+        
+        Parameters
+        ----------
+        in_taskdata_dict_picklepath: path to pickle containing input formatted WG data for that task (time step)
+                                 -> Implemented/created with DryverDownscalingWrapper.prepare() in RunDownscaling.py
+        in_staticdata_dict_picklepath: path to pickle containing input static data (e.g., HydroSHEDS flow acc,
+                                        land areas, upstream pixel area)
+                                 -> Implemented/created with DryverDownscalingWrapper.prepare() in RunDownscaling.py
+        in_config_dict_picklepath: path to pickle containing configuration parameters to run downscaling
+                                 -> Implemented/created with DownscalingConfig in RunDownscaling.py
+        """
+
+        with open(in_taskdata_dict_picklepath, 'rb') as f:
+            self.taskdata = pickle.load(f)
+        with open(in_staticdata_dict_picklepath, 'rb') as f:
             self.staticdata = pickle.load(f)
-        with open(configfn, 'rb') as f:
+        with open(in_config_dict_picklepath, 'rb') as f:
             self.dconfig = pickle.load(f)
         self.daysinmonth_dict = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
-                                7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
+                                 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
 
     def run_ts(self, month, year):
         """
-        This method takes self (loaded and initalized DRYvER Downscaling object) to conduct the actual downscaling.
+        This method takes self (loaded and initialized DRYvER Downscaling object) to conduct the actual downscaling.
 
 
         **Principal approach of downscaling:**
 
         1. runoff based discharge
 
-          a) 0.5 degree lr runoff (surface runoff or surface runoff + groundwater runoff) is disaggregated to 15 arc seconds HydroSHEDS river network
+          a) 0.5 degree lr runoff (surface runoff or surface runoff + groundwater runoff) is disaggregated to 15 arc
+          seconds HydroSHEDS river network
 
           b) this disaggregated runoff is routed through the HydroSHEDS river network via flow accumulation
 
-        2. correction of runoffbased discharge
+        2. correction of runoff-based discharge
 
-          a) the disaggregated runoff is compared as sum over one 0.5 grid cell (lr) to the discharge which is calculted for that cell (net cell runoff or discharge of cell - discharge of all upstream cells) to calculate a correction lr correction value
+          a) the disaggregated runoff is compared as sum over one 0.5 grid cell (lr) to the discharge which is
+          calculated for that cell (net cell runoff or discharge of cell - discharge of all upstream cells) to calculate
+           a correction lr correction value
 
-          b) the correction grid is used to correct the disaggregated runoff, the correction terms are calculated in a weighted way to apply the correction terms in streams with more runoff
+          b) the correction grid is used to correct the disaggregated runoff, the correction terms are calculated in a
+          weighted way to apply the correction terms in streams with more runoff
 
         **1 a. The disaggregation from lr to hr:**
 
-        - inverse distance interpolation from lr to intermediate resolution of 0.1 degree with following arguments power = 2, radius = 1.8 and max points = 9 , the intermediate resolution my be subject to smoothing methods (see later).
-        - the intermediate resolution is dissaggregated to 15 arc seconds
+        - inverse distance interpolation from lr to intermediate resolution of 0.1 degree with the following arguments:
+        power = 2, radius = 1.8 and max points = 9 , the intermediate resolution may be subject to smoothing methods
+        (see later).
+
+        - the intermediate resolution is disaggregated to 15 arc seconds
 
         **1 b. flow accumulation:**
 
@@ -89,18 +109,18 @@ class DryverDownscaling:
         The (boolean) config parameter sr_smoothing decides whether the input low resolution (:term:`lr`) runoff
         (:term:`sr` or :term:`sr` + :term:`gwr`) is smoothed. For that the methods
         :func:`~DryverDownscaling.DryverDownscaling.get_smoothed_runoff` ,
-        :func:`~DryverDownscaling.DryverDownscaling.scipy_outl_removing` and
+        :func:`~DryverDownscaling.DryverDownscaling.remove_outliers_scipy` and
         :func:`~DryverDownscaling.DryverDownscaling.spatial_window_averaging`
         are used in specific parts of the disaggregation of lr runoff to hr runoff and discharge.
         First for all non-reliable (land area fractions below 0.5 %) and nan value grid cells are interpolated
         (get_smoothed_runoff). Then outliers are removed from the grid by limiting the value of a cell to two times the
-        maximum or half of the minimum of its neighbours (scipy_outl_removing). After interpolating the 0.5 degree to
+        maximum or half of the minimum of its neighbours (remove_outliers_scipy). After interpolating the 0.5 degree to
         0.1 degree the runoff smoothing is done with an averaging window of 5 (0.1 degree cells), which means that
         every cell is recalculated of itself and its surrounding 24 neighbours.
 
         **L12 harmonization**
 
-        The dissaggregated runoff can be averaged over the small watersheds (Pfaffstetter level 12) using the
+        The disaggregated runoff can be averaged over the small watersheds (Pfaffstetter level 12) using the
         HydroSHEDS boundaries based on the topological concept of the Pfaffstetter coding system. For this the boolean
         config parameter *l12harm* has to be true.
 
@@ -108,18 +128,18 @@ class DryverDownscaling:
 
         As precipitation is a dominant driving variable for the generation of runoff. It is possible to apply a
         precipitation correction which is calculated based on a monthly spatial variation taken from Worldclim V2
-        data to include the subgrid heterogenity of precipitation patterns. Precipitation correction is activated, if
+        data to include the subgrid heterogeneity of precipitation patterns. Precipitation correction is activated, if
         the config parameter *preccor* is activated.
 
         **2 a. Calculation of correction :term:`lr` values**
 
-        In order to calculate lr correction values the sum of hr dissaggregated runoff for each lr cell is compared to
-        the discharge which is generated in this lr cell. (dis_in_cell_lr - sum_dissaggregated_runoff_hr)
+        In order to calculate lr correction values the sum of hr disaggregated runoff for each lr cell is compared to
+        the discharge which is generated in this lr cell. (dis_in_cell_lr - sum_disaggregated_runoff_hr)
 
         **2 b. The lr correction values are applied to the hr runoff**
 
         The lr correction values, which has been calculated in 2a are now applied in the cell but weighted depending
-        on the streamflow which was calculated based on the dissaggregated runoff. In standard mode this is done by
+        on the streamflow which was calculated based on the disaggregated runoff. In standard mode this is done by
         calculating the share of a hr cell on the total lr cell raw streamflow. This can weighting can be modified
         with a weighting factor which can be handed over in the configuration object with the keyword corrweightfactor
         (see also :func:`~DryverDownscaling.DryverDownscaling.get_corrweight`).
@@ -131,7 +151,7 @@ class DryverDownscaling:
         **Methods to improve the correction mechanisms (2)**
 
         **Large river correction**
-        The hr river network includes more endorheic sinks then the lr river network due the resolution. Thus the
+        The hr river network includes more endorheic sinks than the lr river network due the resolution. Thus the
         correction values may not be sufficient. To account for this an additional adaption of the correction values
         are done. This is done if algorithms ref and ref_srplusgwr are chosen. For more information see
         :func:`~DryverDownscaling.DryverDownscaling.get_lrc_correction_grid`
@@ -153,45 +173,67 @@ class DryverDownscaling:
         #
         print('timestep {} {} started'.format(month, year))
         if self.dconfig.runoff_src == 'cellrunoff':
-            cellrunoff = self.data['cellrunoffseries'].dropna()
+            cellrunoff = self.taskdata['cellrunoff_series'].dropna()
 
-            cellrunoffm3s = (self.get_30min_array(cellrunoff, np.nan) / (self.daysinmonth_dict[month]
-                                                                         * 24 * 60 * 60) * 1000000000)
-            cellrunoff15s = self.disaggregate(cellrunoffm3s, 120) / (120 * 120)
-            cellrunoff15s[cellrunoff15s == -99] = np.nan
-            cellrunoff15s = self.mask_wg_with_hydrosheds(cellrunoff15s)
-            return self.flow_acc(cellrunoff15s)
+            #Convert cell runoff from km3/yr to m3/s
+            cellrunoff_m3s = (self.get_30min_array(cellrunoff, np.nan) / (self.daysinmonth_dict[month]
+                                                                          * 24 * 60 * 60) * 1000000000)
+
+            #Disaggregate from 30 min (HR) to 15s (LR), assigning the same cell runoff to each HR cell
+            # (a 14400th of that in the LR cell)
+            cellrunoff_15s = self.disaggregate(cellrunoff_m3s, 120) / (120 * 120)
+            cellrunoff_15s[cellrunoff_15s == -99] = np.nan
+
+            #Remove HR cells where HydroSHEDS pixel area raster is NoData
+            cellrunoff_15s = self.mask_wg_with_hydrosheds(cellrunoff_15s)
+
+            #Compute flow accumulation on cell runoff (i.e., runoff-based discharge)
+            return self.flow_acc(cellrunoff_15s)
+            #->  end of first phase of principal downscaling
 
         elif self.dconfig.runoff_src == 'totalrunoff':
-            sr = self.data['totalrunoff']
+            sr = self.taskdata['totalrunoff']
         elif self.dconfig.runoff_src == 'srplusgwr':
-            sr = self.data['sr'] + self.data['gwrunoff']
+            sr = self.taskdata['sr'] + self.taskdata['gwrunoff']
         elif self.dconfig.runoff_src == 'sr':
-            sr = self.data['sr']
+            sr = self.taskdata['sr']
         else:
             raise Exception('{} not implemented as runoff_src'.format(self.dconfig.runoff_src))
 
-        if self.dconfig.sr_smoothing:
-            reliable_surfacerunoff = self.get_smoothed_runoff(sr)
+        #Drop or interpolate NA cells (and cells with < 0.5% land fraction)
+        if self.dconfig.sr_smoothing: #Not turned on right now - need to check if "get_smoothed_runoff" function works
+            #Interpolate all LR cells with land area fractions below 0.5 % and nan value grid cells
+            reliable_surfacerunoff_ar = self.get_smoothed_runoff(sr)
         else:
-            # no smoothing at all
+            #Remove na value grid cells
             sr = sr.dropna()
-            reliable_surfacerunoff = self.get_30min_array(
-                sr, np.nan)
+            reliable_surfacerunoff_ar = self.get_30min_array(sr, np.nan)
         del sr
-        cellrunoffseries = self.data['cellrunoffseries']
-        cellrunoffseries.name = 'variable'
-        dis = self.data['dis']
+
+        cellrunoff_series = self.taskdata['cellrunoff_series']
+        cellrunoff_series.name = 'variable'
+        dis = self.taskdata['dis']
         dis.name = 'variable'
-        (dis_fg_conv) = self.get_runoff_based_dis(reliable_surfacerunoff, dis, cellrunoffseries,
-                                                  month=month, yr=year)
+        
+        #--------- Initial 15-sec runoff-based discharge ---------------------------------------------------------------
+        # if sr.smoothing == True: remove outliers
+        # inverse distance interpolation from lr to intermediate resolution of 0.1 degree
+        # if sr.smoothing == True: perform 5x5 mean filtering on 6 min raster (excluding NAs)
+        # disaggregation the intermediate resolution is disaggregated to 15 arc seconds
+        # mask with HydroSHEDS reference layer (remove 15-sec cells where original HydroSHEDS pixel area raster is NoData)
+        # compute runoff-based discharge
+        # correct runoff-based discharge for changes in storage of global lakes and reservoirs
+        (dis_fg_conv) = self.get_runoff_based_dis(reliable_surfacerunoff_ar, month=month, yr=year)
+        
+        #If not implementing further discharge correction, return discharge
         if not self.dconfig.dis_corr:
             return self.flow_acc(dis_fg_conv)
-        del reliable_surfacerunoff
+        del reliable_surfacerunoff_ar
+        
         # step8
-        correction_grid = self.calculate_lr_correctionvalues(dis_fg_conv, cellrunoffseries,
-                                                            month=month, yr=year)
-        del cellrunoffseries
+        correction_grid = self.calculate_lr_correctionvalues(dis_fg_conv, cellrunoff_series,
+                                                             month=month, yr=year)
+        del cellrunoff_series
         if 'corrweightfactor' in self.dconfig.kwargs:
             correction_weights = self.get_corrweight(dis_fg_conv, self.dconfig.kwargs['corrweightfactor'])
         else:
@@ -199,15 +241,15 @@ class DryverDownscaling:
 
         if self.dconfig.large_river_corr:
             corrected_dis = self.calc_corrected_dis(correction_grid=correction_grid,
-                                                   correction_weights=correction_weights,
-                                                   converted_runoff=dis_fg_conv,
-                                                   month=month)
-            dis = self.data['dis']
+                                                    correction_weights=correction_weights,
+                                                    converted_runoff=dis_fg_conv,
+                                                    month=month)
+            dis = self.taskdata['dis']
             dis.name = 'variable'
             correction_grid = self.get_lrc_correction_grid(dis,
-                                                         correction_grid=correction_grid,
-                                                         corrected_dis=corrected_dis,
-                                                         month=month)
+                                                           correction_grid=correction_grid,
+                                                           corrected_dis=corrected_dis,
+                                                           month=month)
             del corrected_dis
 
         if self.dconfig.corr_grid_shift:
@@ -215,10 +257,10 @@ class DryverDownscaling:
         if self.dconfig.coor_grid_smoothing:
             correction_grid = self.smooth_correction_grid(correction_grid)
         corrected_dis = self.calc_corrected_dis(correction_grid=correction_grid,
-                                               correction_weights=correction_weights,
-                                               converted_runoff=dis_fg_conv,
-                                               threshold=self.dconfig.threshold,
-                                               month=month)
+                                                correction_weights=correction_weights,
+                                                converted_runoff=dis_fg_conv,
+                                                threshold=self.dconfig.threshold,
+                                                month=month)
         return corrected_dis
 
     def save_and_run_ts(self):
@@ -230,8 +272,8 @@ class DryverDownscaling:
         timestep as month since 01-01-startyear, list with values of points of interest
 
         """
-        month = self.data['month']
-        year = self.data['year']
+        month = self.taskdata['month']
+        year = self.taskdata['year']
         result = self.run_ts(month, year)
         if isinstance(self.dconfig.pois, pd.DataFrame):
             ts_values = []
@@ -267,68 +309,98 @@ class DryverDownscaling:
             ds.to_netcdf(
                 os.path.join(
                     self.dconfig.temp_dir,
-                    '/15sec_dis_{}_{:02d}.nc4'.format(month, year),
-                    encoding={'dis': {'zlib': True, 'complevel': 9,
-                                      'dtype': 'float32'}},
-                    unlimited_dims=['time']
-                )
+                    '/15sec_dis_{}_{:02d}.nc4'.format(month, year)
+                ),
+                encoding={'dis': {'zlib': True, 'complevel': 9,
+                                  'dtype': 'float32'}},
+                unlimited_dims=['time']
             )
+
             del ds
             del result
         # self.wg.aoi = self.kwargs['area_of_interest']
         return month - 1 + (year - self.dconfig.startyear) * 12, ts_values
 
-    def get_runoff_based_dis(self, reliablesurfacerunoff, lrdisseries, cellrunoffseries, **kwargs):
+    def get_runoff_based_dis(self, reliable_surfacerunoff_ar, 
+                             **kwargs):
         """
 
         Parameters
         ----------
-        reliablesurfacerunoff: np.array
+        reliable_surfacerunoff_ar: np.array
             lr array with reliable runoff with which the discharge is calculated
         kwargs: dict
             keyword arguments which are handed over to convert runoff to dis
 
+        Previously two other arguments: lr_dis_series, cellrunoff_series
+        But these arguments were not used in the end
+        
         Returns
         -------
 
         """
+
+        #Interpolate runoff from 30 min to 6 min with inverse-distance weighting
         if self.dconfig.sr_smoothing:
-            outlier_removed = self.scipy_outl_removing(reliablesurfacerunoff)
+            # Remove outliers (2 times max of neighbours or half of min of neighbours)
+            outlier_removed = self.remove_outliers_scipy(reliable_surfacerunoff_ar)
             tmp_ds = self.create_inmemory_30min_pointds(outlier_removed, all=True)
         else:
-            tmp_ds = self.create_inmemory_30min_pointds(reliablesurfacerunoff, all=True)
+            tmp_ds = self.create_inmemory_30min_pointds(reliable_surfacerunoff_ar, all=True)
         tmp_interp = self.interpolation_to_grid(tmp_ds, '6min')
         del tmp_ds
         tmp_interp[tmp_interp == -99] = np.nan
+
+        #Perform 5x5 mean filtering on 6 min raster (excluding NAs) — if sr.smoothing == True
         if self.dconfig.sr_smoothing:
             tmp_smooth = self.spatial_window_averaging(tmp_interp, 5)
         else:
             tmp_smooth = tmp_interp
+
+        #Disaggregate from 6 min to 15 s
         interpolated_smooth_15s = self.disaggregate(tmp_smooth, 24)
         del tmp_interp
+
+
         if self.dconfig.l12harm:
+            # Correct for l12 catchment — not implemented
             masked_diss_tmp_smooth = self.harmonize_l12_hydrosheds(interpolated_smooth_15s)
         else:
+            #Remove 15-sec cells where original HydroSHEDS pixel area raster is NoData
             masked_diss_tmp_smooth = self.mask_wg_with_hydrosheds(interpolated_smooth_15s)
         del interpolated_smooth_15s
+
+        #Compute runoff-based discharge (from mm to m3/s)
         conv = self.convert_runoff_to_dis(masked_diss_tmp_smooth, **kwargs)
+
+        #Correct runoff-based discharge for changes in storage of global lakes and reservoirs
+        # (i.e., redistribute volume changes from global water bodies' pour points to all cells intersecting with 
+        # that global lake)
         if self.dconfig.correct_global_lakes:
-            # modification of reliable surfacerunoff with glolak and glores
-            globallakes_fraction = self.staticdata['globallakes_fraction']
-            gloaddition = self.disaggregate_smth(self.get_30min_array(self.data['gloaddition'] /
-                                                                      (self.daysinmonth_dict[kwargs['month']]
-                                                                       * 24 * 60 * 60) * 1000000000, float(0)), 120)
-            conv = conv - (globallakes_fraction * gloaddition)
+            globallakes_fraction_15s = self.staticdata['globallakes_fraction_15s']
+
+            #Disaggregate global lakes redistribution values from 30 min pd.Series in km3/y to 15 arc arrays in m3/s
+            globallakes_addition_ar_15sec_m3s = self.disaggregate_ar(
+                self.get_30min_array(
+                    self.taskdata['globallakes_addition']
+                    / (self.daysinmonth_dict[kwargs['month']] * 24 * 60 * 60) * 1000000000,
+                    float(0)),
+                factor=120)
+
+            #Redistribute storage change based on fraction of lakes in LR cell intersecting with HR cell
+            conv = conv - (globallakes_fraction_15s * globallakes_addition_ar_15sec_m3s)
+
+            #Convert negative runoff-based discharge values to 0
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
                 conv = np.where(conv < 0, 0, conv)
+
         return conv
 
     def get_smoothed_runoff(self, runoff):
         """
-
         This method takes in :term:`lr` runoff (may be :term:`sr` or :term:`sr` + :term:`gwr`) and first drops grid
-        cells, where the land area fraction is below 0.5 %. Then those droped grid cells and also grid cells which had
+        cells where the land area fraction is below 0.5 %. Then those dropped grid cells and also grid cells which had
         no values are filled with an interpolated values.
 
         Parameters
@@ -343,38 +415,59 @@ class DryverDownscaling:
 
         """
 
-
         # STEP4a
-        # find out cells which need to be replaced
-        # PRELIMINIARY
         mean_land_fraction = self.staticdata['mean_land_fraction']
+        # Identify and remove grid cells with less than 5% land area
         not_reliable_arcids = mean_land_fraction[mean_land_fraction <= 0.5].index
         reliable_surface_runoff = (runoff.drop(not_reliable_arcids))
+        #Convert pd series of surface runoff (with removed cells) to 30 min array
         upper = self.get_30min_array(reliable_surface_runoff, np.nan)
+        #Run interpolation on a point-equivalent of the surface runoff raster
         points = self.create_inmemory_30min_pointds(upper)
-        lower = self.interpolation_to_grid(points, '30min',
+        lower = self.interpolation_to_grid(ds=points,
+                                           resolution='30min',
                                            alg="invdistnn:power=1.0:smoothing=0.0:radius=20"
                                                ":min_points=1:max_points=9:nodata=-99")
+        #Fill dropped cells with interpolated values
         new_surface_runoff_land_mm = self.stack(upper, lower)
+
         return new_surface_runoff_land_mm
 
     def get_30min_array(self, s, nan=-99):
+        """
+        Create a numpy array in resolution of 30min(720 x 360 of WaterGAP data) from a pd.Series
+
+        Parameters
+        ----------
+        s : pd.Series or 'flowdir'
+            pandas Series is mapped via index (arcid) or via 'flowdir' via inputdir
+        nan : int
+            value which represents nan
+
+        Returns
+        -------
+        np.array
+        """
         array = np.full((360, 720), nan)
         wg_input = self.staticdata['wg_input']
         aoi = self.dconfig.aoi
         if isinstance(s, pd.Series):
             s.name = 'variable'
-            df = wg_input.merge(s, left_index=True, right_index=True)
+            df = wg_input.merge(s, left_index=True, right_index=True) #Append basic information
             flowdir = False
         elif s == 'flowdir':
             df = wg_input.rename(columns={"G_FLOWDIR.UNF2": "variable"})
             flowdir = True
         else:
             raise Exception('not implemented')
+
+        # Convert df to numpy array
         for x in df.itertuples():
             array[x._2 - 1, x._3 - 1] = x.variable
+
+        # Subset array to intersect with area of interest
         ar = array[int(360 - (aoi[1][1] + 90) * 2):int(360 - (aoi[1][0] + 90) * 2),
-                   int((aoi[0][0] + 180) * 2): int((aoi[0][1] + 180) * 2)]
+             int((aoi[0][0] + 180) * 2): int((aoi[0][1] + 180) * 2)]
         if flowdir:
             # avoid flow out of aoi
             # top border
@@ -395,8 +488,8 @@ class DryverDownscaling:
 
     def create_inmemory_30min_pointds(self, inp, **kwargs):
         """
-        Method which creates based on an WaterGAP resolution array (720*360) or a pandas Dataframe with arcid
-         an inmemory point layer.
+        Method which creates an inmemory point layer from a WaterGAP resolution array (720*360) or
+        a pandas Dataframe with arcid
 
         Parameters
         ----------
@@ -412,17 +505,20 @@ class DryverDownscaling:
         """
         aoi = self.dconfig.aoi
         coords = self.staticdata['coords']
+
         if isinstance(inp, (pd.Series, pd.DataFrame)):
             df = coords.merge(inp, left_index=True, right_index=True)
             inptype = 'pd'
         else:
             df = None
             inptype = 'other'
+
         drv = gdal.GetDriverByName('Memory')
         ds = drv.Create('runofftemp', 0, 0, 0, gdal.GDT_Unknown)
         lyr = ds.CreateLayer('runofftemp', None, ogr.wkbPoint)
         field_defn = ogr.FieldDefn('variable', ogr.OFTReal)
         lyr.CreateField(field_defn)
+
         if inptype == 'pd':
             for x in df.itertuples():
                 feat = ogr.Feature(lyr.GetLayerDefn())
@@ -435,7 +531,7 @@ class DryverDownscaling:
         else:
             if 'all' in kwargs:
                 for idx, value in np.ndenumerate(inp):
-                    x = aoi[0][0] + (idx[1] / 2) + 0.25
+                    x = aoi[0][0] + (idx[1] / 2) + 0.25 #Create point in the middle of cells (0.25 arc-degs from the edge)
                     y = aoi[1][1] - ((idx[0] / 2) + 0.25)
                     if not np.isnan(value):
                         feat = ogr.Feature(lyr.GetLayerDefn())
@@ -462,7 +558,22 @@ class DryverDownscaling:
         return ds
 
     def interpolation_to_grid(self, ds, resolution, **kwargs):
+        """
+
+        Parameters
+        ----------
+        ds: data points
+        resolution: desired resolution, accepts "6min", "30min", and "15sec"
+        kwargs: can provide "alg" argument to gdal.GridOptions
+
+        Returns
+        -------
+        inmemory np array
+        """
+
         aoi = self.dconfig.aoi
+
+        #Determine number of rows and columns depending on desired output resolution
         if resolution == '6min':
             width = (aoi[0][1] - aoi[0][0]) * 10
             height = (aoi[1][1] - aoi[1][0]) * 10
@@ -474,12 +585,14 @@ class DryverDownscaling:
             height = (aoi[1][1] - aoi[1][0]) * 60 * 4
         else:
             raise Exception('interpolation not implemented')
+
         outputbounds = [aoi[0][0], aoi[1][1], aoi[0][1], aoi[1][0]]
         alg = "invdistnn:power=2.0:smoothing=0.0:radius=1.8:max_points=9:nodata=-99"
         if 'alg' in kwargs:
             alg = kwargs.pop('alg')
         out_raster_srs = osr.SpatialReference()
         out_raster_srs.ImportFromEPSG(4326)
+        #Perform interpolation
         go = gdal.GridOptions(format='MEM',
                               outputType=gdal.GDT_Float32,
                               layers='runofftemp',
@@ -490,14 +603,16 @@ class DryverDownscaling:
                               height=height,
                               outputBounds=outputbounds,
                               **kwargs)
+        #Create output grid
         outr = gdal.Grid('outr', ds, options=go)
         res = outr.ReadAsArray().copy()
         del outr
+        #Return interpolated grid inmemory
         return res
 
     def mask_wg_with_hydrosheds(self, wg):
         """
-        Mask dissaggregated a DownScaleArray with a Hydrosheds rasterfile like flow directions.
+        Mask disaggregated a DownScaleArray with a Hydrosheds raster file like flow directions.
 
         This process masks the 15sec from WaterGAP originating data (DownScaleArray) with Hydrosheds data. They must not
         be the same size but DownScaleArray must be at least the size of Hydrosheds array resp. raster. The
@@ -522,11 +637,11 @@ class DryverDownscaling:
         if colix == 0:
             colix = array.shape[1]
         wgdata = offset[:rowix,
-                        :colix]
+                 :colix]
         array[~np.isnan(hydrosheds_ar)] = wgdata[~np.isnan(hydrosheds_ar)]
         # Setting new area of interest as array is clipped
         # wg.aoi = ((round(hydrosheds_geotrans[0]), round(hydrosheds_geotrans[0]) + array.shape[1]//240),
-                  # (round(hydrosheds_geotrans[3] - array.shape[0] // 240), round(hydrosheds_geotrans[3])))
+        # (round(hydrosheds_geotrans[3] - array.shape[0] // 240), round(hydrosheds_geotrans[3])))
         # self.wg.aoi = wg.aoi
         return array
 
@@ -543,19 +658,19 @@ class DryverDownscaling:
         newar[np.isnan(self.staticdata['pixelarea'])] = np.nan
         return newar
 
-    def calculate_lr_correctionvalues(self, dis_fg_conv, cellrunoffseries, **kwargs):
+    def calculate_lr_correctionvalues(self, dis_fg_conv, cellrunoff_series, **kwargs):
         # step 8a
         # reaggregation of step5disconv
         dis_pix_30min = self.aggsum(dis_fg_conv, 120, zeroremove=False)
         if self.dconfig.mode == 'ts':
-            cellrunoffm3s = (self.get_30min_array(cellrunoffseries, np.nan) / (self.daysinmonth_dict[kwargs['month']]
-                             * 24 * 60 * 60) * 1000000000)
+            cellrunoff_m3s = (self.get_30min_array(cellrunoff_series, np.nan) / (self.daysinmonth_dict[kwargs['month']]
+                                                                                 * 24 * 60 * 60) * 1000000000)
         else:
-            cellrunoffm3s = self.get_30min_array(cellrunoffseries, np.nan) / (365 * 24 * 60 * 60) * 1000000000
+            cellrunoff_m3s = self.get_30min_array(cellrunoff_series, np.nan) / (365 * 24 * 60 * 60) * 1000000000
         landratio_corr = self.staticdata['landratio_corr']
-        cellrunoffm3s *= landratio_corr
-        cellrunoffm3s = self.stack(upper=cellrunoffm3s, lower=dis_pix_30min)
-        dif_dis_30min = cellrunoffm3s - dis_pix_30min
+        cellrunoff_m3s *= landratio_corr
+        cellrunoff_m3s = self.stack(upper=cellrunoff_m3s, lower=dis_pix_30min)
+        dif_dis_30min = cellrunoff_m3s - dis_pix_30min
         return dif_dis_30min
 
     def get_corrweight(self, converted_runoff, weightingfactor=1):
@@ -584,7 +699,7 @@ class DryverDownscaling:
         runoffbaseddis = self.flow_acc(converted_runoff)
         dis_fg_sum_30min = self.aggsum(runoffbaseddis, 120, zeroremove=False)
         dis_fg_sum_30min[dis_fg_sum_30min == 0] = 1
-        dis_corr_weight = runoffbaseddis / self.disaggregate_smth(dis_fg_sum_30min, 120)
+        dis_corr_weight = runoffbaseddis / self.disaggregate_ar(dis_fg_sum_30min, 120)
         if weightingfactor != 1:
             dis_corr_weight = ((dis_corr_weight - (1 / (120 * 120))) * weightingfactor) + (1 / (120 * 120))
         return dis_corr_weight
@@ -592,13 +707,13 @@ class DryverDownscaling:
     def calc_corrected_dis(self, correction_grid, correction_weights, converted_runoff,
                            threshold=0.001, **kwargs):
         """
-        Based on the raw discharge calculated with dissaggregated runoff, a lr correction grid and correction weights
+        Based on the raw discharge calculated with disaggregated runoff, a lr correction grid and correction weights
         the downscaled discharge is calculated.
 
-        The correction grid is dissaggregated to hr and multiplied with correction weights. Then the threshold value is
+        The correction grid is disaggregated to hr and multiplied with correction weights. Then the threshold value is
         applied if parameter apply_thresh == True. This threshold is a multiplicator for upstreamarea, which is then
         used as maximum correction value in positive or negative direction. Then the weighted and optional limited
-        correction values are then applied on the raw discharge calculated with dissaggregated runoff. To avoid
+        correction values are then applied on the raw discharge calculated with disaggregated runoff. To avoid
         implausible artifacts of the correction. Negative discharge values are set to zero.
 
         Parameters
@@ -618,7 +733,7 @@ class DryverDownscaling:
             hr grid with corrected discharge
 
         """
-        dis_pix_corr_15s = self.disaggregate_smth(correction_grid.data, 120) * correction_weights.data
+        dis_pix_corr_15s = self.disaggregate_ar(correction_grid.data, 120) * correction_weights.data
 
         if threshold is not None:
             ctar = self.staticdata['upstream_pixelarea'] * threshold
@@ -684,7 +799,7 @@ class DryverDownscaling:
         transfer_accu_grid = FlowAccTT(transfer_ddm_grid, fa, True).get(transfer_value_grid,
                                                                         no_negative_accumulation=False)
         new_diff_dis_30min = correction_grid + ((cell_dis_contribution_dif + transfer_accu_grid)
-                                               * lrivermask)
+                                                * lrivermask)
 
         return new_diff_dis_30min
 
@@ -735,18 +850,17 @@ class DryverDownscaling:
     def convert_runoff_to_dis(self, runoff, **kwargs):
         #TODO rename method
         if self.dconfig.mode == 'ts':
-            divisionterm = (self.daysinmonth_dict[kwargs['month']] * 24 * 60 * 60)
+            division_term = (self.daysinmonth_dict[kwargs['month']] * 24 * 60 * 60)
         elif self.dconfig.mode == 'longterm_avg':
-            divisionterm = (365 * 24 * 60 * 60)
+            division_term = (365 * 24 * 60 * 60)
         else:
             raise Exception()
         area = self.staticdata['pixelarea']
-        data = (runoff * area
-                * 1000 / divisionterm)
+        data = (runoff * area * 1000 / division_term)
         return data
 
     @staticmethod
-    def scipy_outl_removing(ar):
+    def remove_outliers_scipy(ar):
         """
         Remove outliers (2 times max of neighbours or half of min of neighbours)
 
@@ -809,7 +923,7 @@ class DryverDownscaling:
             else:
                 return np.nan
 
-        ar = generic_filter(ar, nanmean, windowsize)
+        ar = generic_filter(input=ar, function=nanmean, size=windowsize)
         return ar
 
     @staticmethod
@@ -820,7 +934,7 @@ class DryverDownscaling:
         Parameters
         ----------
         dsarray : DownscalingArray
-            array which should be dissaggregated into higher resolution
+            array which should be disaggregated into higher resolution
         factor : number
             target resolution as string
         Returns
@@ -860,10 +974,10 @@ class DryverDownscaling:
         return np.column_stack(d)
 
     @staticmethod
-    def disaggregate_smth(what, factor):
+    def disaggregate_ar(what, factor):
         """ Takes a 2D numpy array and repeat the value of one pixel by factor along both axis
 
-        :param what: 2D Array which should be dissaggregated
+        :param what: 2D Array which should be disaggregated
         :type what: np.ndarray
         :param factor: how often the value is repeated
         :type factor: int
@@ -874,11 +988,10 @@ class DryverDownscaling:
         b = np.repeat(a, factor, axis=1)
         return b
 
-
 def run_task(task, path):
-    dd = DryverDownscaling(datafn=task,
-                           staticdatafn= os.path.join(path, 'staticdata.pickle'),
-                           configfn=os.path.join(path, 'config.pickle')
+    dd = DryverDownscaling(in_taskdata_dict_picklepath=task,
+                           in_staticdata_dict_picklepath= os.path.join(path, 'staticdata.pickle'),
+                           in_config_dict_picklepath=os.path.join(path, 'config.pickle')
                            )
     return dd.save_and_run_ts()
 

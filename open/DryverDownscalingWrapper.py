@@ -100,7 +100,7 @@ class DryverDownscalingWrapper:
                     'upstream_pixelarea': self.hydrosheds.uparea,
                     'hydrosheds_geotrans': self.hydrosheds.hydrosheds_geotrans,
                     'pixelarea': self.hydrosheds.pixarea,
-                    'globallakes_fraction': self.hydrosheds.globallakes_fraction_ar
+                    'globallakes_fraction_15s': self.hydrosheds.globallakes_fraction_15s_ar
                 }
                 if self.dconfig.l12harm:
                     staticdata['l12harmdata'] = self.hydrosheds.l12harmdata
@@ -119,7 +119,7 @@ class DryverDownscalingWrapper:
                                                                                  'month',
                                                                                  'year'])['variable'].loc[
                                 slice(None), mon, yr],
-                            'cellrunoffseries': self.wg.cell_runoff.set_index(['arcid',
+                            'cellrunoff_series': self.wg.cell_runoff.set_index(['arcid',
                                                                                'month',
                                                                                'year'])['net_cell_runoff'].loc[
                                 slice(None),
@@ -136,7 +136,7 @@ class DryverDownscalingWrapper:
                                 slice(None), mon, yr],
                         }
                         if self.dconfig.correct_global_lakes:
-                            data['gloaddition'] = self.wg.gloaddition.loc[slice(None), yr, mon]
+                            data['globallakes_addition'] = self.wg.globallakes_addition.loc[slice(None), yr, mon]
 
                         tasklist.append(data)
 
@@ -154,7 +154,7 @@ class DryverDownscalingWrapper:
 
 def run_prepared_downscaling(path, number_of_worker=2):
     """
-    Allocate tasks (time steps-continents combinations) to run downscaling on different workers in a parallel
+    Allocate and run downscaling tasks (time steps-continents combinations) on different workers in a parallel
     processing framework.
 
     Parameters
@@ -169,9 +169,9 @@ def run_prepared_downscaling(path, number_of_worker=2):
 
     with open(os.path.join(path, 'config.pickle'), 'rb') as f:
         config = pickle.load(f)
-    pool = Pool(processes=number_of_worker)
-    run_tasks = partial(run_task, path=path)
-    poi_list = pool.map(run_tasks, [task for task in glob.glob('{}*task*.pickle'.format(path))])
+    pool = Pool(processes=number_of_worker) #Sets up the pool of worker processes to which tasks can be offloaded
+    run_tasks = partial(run_task, path=path) #Pass the "path" argument (because pool.map can only pass a single argument to a function)
+    poi_list = pool.map(run_tasks, [task for task in glob.glob('{}*task*.pickle'.format(path))]) #Iterate over time-steps-continents
 
     if isinstance(config.pois, pd.DataFrame):
         poidf = pd.DataFrame([x[1] for x in poi_list],
