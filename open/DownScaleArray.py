@@ -16,7 +16,7 @@ class DownScaleArray:
     Parameters
     ----------
     config : DownscalingConfig
-        configurtion object for running the downscaling,
+        configuration object for running the downscaling,
         it is used to know if and where to write the data
     aoi :  ((number, number), (number, number))
         area of interest in degree aoi[0][0] = left border,
@@ -28,10 +28,10 @@ class DownScaleArray:
     ----------
 
     status : None or str
-         initialized with None later holds information on resolution and name of the
+         initialized with None. Later holds information on resolution and name of the
          downscaled array in following manner *'resolution_name'* e.g. *'15sec_dis'*
     data : None or numpy.array
-         initialized with None later holds data as numpy.array
+         initialized with None. Later holds data as numpy.array
     write_raster_specs : dict
         dict containing information on how big is the conversion factor for one
         axis from one degree to the specified resolution (currently implemented:
