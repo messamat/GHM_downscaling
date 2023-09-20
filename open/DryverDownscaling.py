@@ -20,7 +20,14 @@ from open.ModifiedFlowAcc import FlowAccTT
 from open.DownScaleArray import DownScaleArray
 
 def jit_filter_function(filter_function):
-    """Decorator for use with scipy.ndimage.generic_filter."""
+    """Decorator for use with scipy.ndimage.generic_filter.
+    The point is to optimize the function with Numba, which generates optimized machine code from pure Python code.
+    jit stands for 'just-in-time' compilation.
+    Numba reads the Python bytecode for a decorated function and combines this with information about the types of the
+    input arguments to the function. It analyzes and optimizes your code, and finally uses the LLVM compiler library
+    to generate a machine code version of your function, tailored to your CPU capabilities. This compiled version is
+    then used every time the function is called."""
+
     jitted_function = numba.jit(filter_function, nopython=True)
 
     @cfunc(intc(CPointer(float64), intp, CPointer(float64), voidptr))
@@ -43,7 +50,7 @@ class DryverDownscaling:
             self.staticdata = pickle.load(f)
         with open(configfn, 'rb') as f:
             self.dconfig = pickle.load(f)
-        self.daysinmonthdict = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
+        self.daysinmonth_dict = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
                                 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
 
     def run_ts(self, month, year):
@@ -127,7 +134,7 @@ class DryverDownscaling:
         The hr river network includes more endorheic sinks then the lr river network due the resolution. Thus the
         correction values may not be sufficient. To account for this an additional adaption of the correction values
         are done. This is done if algorithms ref and ref_srplusgwr are chosen. For more information see
-        :func:`~DryverDownscaling.DryverDownscaling.get_lrc_correctiongrid`
+        :func:`~DryverDownscaling.DryverDownscaling.get_lrc_correction_grid`
 
         **Partial shifting the correction grid**
         We don't know where in a lr grid cell the difference between runoff aggregated discharge and actual discharge
@@ -148,7 +155,7 @@ class DryverDownscaling:
         if self.dconfig.runoff_src == 'cellrunoff':
             cellrunoff = self.data['cellrunoffseries'].dropna()
 
-            cellrunoffm3s = (self.get_30min_array(cellrunoff, np.nan) / (self.daysinmonthdict[month]
+            cellrunoffm3s = (self.get_30min_array(cellrunoff, np.nan) / (self.daysinmonth_dict[month]
                                                                          * 24 * 60 * 60) * 1000000000)
             cellrunoff15s = self.disaggregate(cellrunoffm3s, 120) / (120 * 120)
             cellrunoff15s[cellrunoff15s == -99] = np.nan
@@ -182,37 +189,37 @@ class DryverDownscaling:
             return self.flow_acc(dis_fg_conv)
         del reliable_surfacerunoff
         # step8
-        correctiongrid = self.calculate_lr_correctionvalues(dis_fg_conv, cellrunoffseries,
+        correction_grid = self.calculate_lr_correctionvalues(dis_fg_conv, cellrunoffseries,
                                                             month=month, yr=year)
         del cellrunoffseries
         if 'corrweightfactor' in self.dconfig.kwargs:
-            corrweights = self.get_corrweight(dis_fg_conv, self.dconfig.kwargs['corrweightfactor'])
+            correction_weights = self.get_corrweight(dis_fg_conv, self.dconfig.kwargs['corrweightfactor'])
         else:
-            corrweights = self.get_corrweight(dis_fg_conv)
+            correction_weights = self.get_corrweight(dis_fg_conv)
 
         if self.dconfig.large_river_corr:
-            correcteddis = self.calc_corrected_dis(correctiongrid=correctiongrid,
-                                                   corrweights=corrweights,
+            corrected_dis = self.calc_corrected_dis(correction_grid=correction_grid,
+                                                   correction_weights=correction_weights,
                                                    converted_runoff=dis_fg_conv,
                                                    month=month)
             dis = self.data['dis']
             dis.name = 'variable'
-            correctiongrid = self.get_lrc_correctiongrid(dis,
-                                                         correctiongrid=correctiongrid,
-                                                         correcteddis=correcteddis,
+            correction_grid = self.get_lrc_correction_grid(dis,
+                                                         correction_grid=correction_grid,
+                                                         corrected_dis=corrected_dis,
                                                          month=month)
-            del correcteddis
+            del corrected_dis
 
         if self.dconfig.corr_grid_shift:
-            correctiongrid = self.shift_correctiongrid(correctiongrid)
+            correction_grid = self.shift_correction_grid(correction_grid)
         if self.dconfig.coor_grid_smoothing:
-            correctiongrid = self.smooth_correctiongrid(correctiongrid)
-        correcteddis = self.calc_corrected_dis(correctiongrid=correctiongrid,
-                                               corrweights=corrweights,
+            correction_grid = self.smooth_correction_grid(correction_grid)
+        corrected_dis = self.calc_corrected_dis(correction_grid=correction_grid,
+                                               correction_weights=correction_weights,
                                                converted_runoff=dis_fg_conv,
                                                threshold=self.dconfig.threshold,
                                                month=month)
-        return correcteddis
+        return corrected_dis
 
     def save_and_run_ts(self):
         """
@@ -309,7 +316,7 @@ class DryverDownscaling:
             # modification of reliable surfacerunoff with glolak and glores
             globallakes_fraction = self.staticdata['globallakes_fraction']
             gloaddition = self.disaggregate_smth(self.get_30min_array(self.data['gloaddition'] /
-                                                                      (self.daysinmonthdict[kwargs['month']]
+                                                                      (self.daysinmonth_dict[kwargs['month']]
                                                                        * 24 * 60 * 60) * 1000000000, float(0)), 120)
             conv = conv - (globallakes_fraction * gloaddition)
             with warnings.catch_warnings():
@@ -340,8 +347,8 @@ class DryverDownscaling:
         # STEP4a
         # find out cells which need to be replaced
         # PRELIMINIARY
-        meanlfr = self.staticdata['meanlfr']
-        not_reliable_arcids = meanlfr[meanlfr <= 0.5].index
+        mean_land_fraction = self.staticdata['mean_land_fraction']
+        not_reliable_arcids = mean_land_fraction[mean_land_fraction <= 0.5].index
         reliable_surface_runoff = (runoff.drop(not_reliable_arcids))
         upper = self.get_30min_array(reliable_surface_runoff, np.nan)
         points = self.create_inmemory_30min_pointds(upper)
@@ -353,14 +360,14 @@ class DryverDownscaling:
 
     def get_30min_array(self, s, nan=-99):
         array = np.full((360, 720), nan)
-        wginput = self.staticdata['wginput']
+        wg_input = self.staticdata['wg_input']
         aoi = self.dconfig.aoi
         if isinstance(s, pd.Series):
             s.name = 'variable'
-            df = wginput.merge(s, left_index=True, right_index=True)
+            df = wg_input.merge(s, left_index=True, right_index=True)
             flowdir = False
         elif s == 'flowdir':
-            df = wginput.rename(columns={"G_FLOWDIR.UNF2": "variable"})
+            df = wg_input.rename(columns={"G_FLOWDIR.UNF2": "variable"})
             flowdir = True
         else:
             raise Exception('not implemented')
@@ -432,7 +439,7 @@ class DryverDownscaling:
                     y = aoi[1][1] - ((idx[0] / 2) + 0.25)
                     if not np.isnan(value):
                         feat = ogr.Feature(lyr.GetLayerDefn())
-                        # irow, icol = self.wginput.data.loc[x.Index, ['GR.UNF2', 'GC.UNF2']]
+                        # irow, icol = self.wg_input.data.loc[x.Index, ['GR.UNF2', 'GC.UNF2']]
                         feat.SetField("variable", value)
                         pt = ogr.Geometry(ogr.wkbPoint)
                         pt.SetPoint(0, x, y)
@@ -445,7 +452,7 @@ class DryverDownscaling:
                     row = int((aoi[1][1] - x.Y) // 0.5)
                     if not np.isnan(inp[row, col]):
                         feat = ogr.Feature(lyr.GetLayerDefn())
-                        # irow, icol = self.wginput.data.loc[x.Index, ['GR.UNF2', 'GC.UNF2']]
+                        # irow, icol = self.wg_input.data.loc[x.Index, ['GR.UNF2', 'GC.UNF2']]
                         feat.SetField("variable", inp[row, col])
                         pt = ogr.Geometry(ogr.wkbPoint)
                         pt.SetPoint(0, x.X, x.Y)
@@ -541,7 +548,7 @@ class DryverDownscaling:
         # reaggregation of step5disconv
         dis_pix_30min = self.aggsum(dis_fg_conv, 120, zeroremove=False)
         if self.dconfig.mode == 'ts':
-            cellrunoffm3s = (self.get_30min_array(cellrunoffseries, np.nan) / (self.daysinmonthdict[kwargs['month']]
+            cellrunoffm3s = (self.get_30min_array(cellrunoffseries, np.nan) / (self.daysinmonth_dict[kwargs['month']]
                              * 24 * 60 * 60) * 1000000000)
         else:
             cellrunoffm3s = self.get_30min_array(cellrunoffseries, np.nan) / (365 * 24 * 60 * 60) * 1000000000
@@ -582,7 +589,7 @@ class DryverDownscaling:
             dis_corr_weight = ((dis_corr_weight - (1 / (120 * 120))) * weightingfactor) + (1 / (120 * 120))
         return dis_corr_weight
 
-    def calc_corrected_dis(self, correctiongrid, corrweights, converted_runoff,
+    def calc_corrected_dis(self, correction_grid, correction_weights, converted_runoff,
                            threshold=0.001, **kwargs):
         """
         Based on the raw discharge calculated with dissaggregated runoff, a lr correction grid and correction weights
@@ -596,9 +603,9 @@ class DryverDownscaling:
 
         Parameters
         ----------
-        correctiongrid: np.array
+        correction_grid: np.array
             lr grid with correction values
-        corrweights: np.array
+        correction_weights: np.array
             hr grid with weights for the lr correction values
         converted_runoff: np.array
             grid with converted_runoff
@@ -611,10 +618,10 @@ class DryverDownscaling:
             hr grid with corrected discharge
 
         """
-        dis_pix_corr_15s = self.disaggregate_smth(correctiongrid.data, 120) * corrweights.data
+        dis_pix_corr_15s = self.disaggregate_smth(correction_grid.data, 120) * correction_weights.data
 
         if threshold is not None:
-            ctar = self.staticdata['upstreampixelarea'] * threshold
+            ctar = self.staticdata['upstream_pixelarea'] * threshold
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
                 negative_corr = np.where(dis_pix_corr_15s < 0, -1, 1)
@@ -631,7 +638,7 @@ class DryverDownscaling:
             corrected_dis[corrected_dis < 0] = 0
         return corrected_dis
 
-    def get_lrc_correctiongrid(self, dis, correcteddis, correctiongrid, **kwargs):
+    def get_lrc_correction_grid(self, dis, corrected_dis, correction_grid, **kwargs):
         """
         This method adapts the correction grid to account for differences in river networks (i.e. missing endorheic
         sinks). This adaption is only done in large rivers ( geq 50000 km2)
@@ -639,8 +646,8 @@ class DryverDownscaling:
         Parameters
         ----------
         dis
-        correcteddis
-        correctiongrid
+        corrected_dis
+        correction_grid
         kwargs
 
         Returns
@@ -651,7 +658,7 @@ class DryverDownscaling:
         flowdir = self.get_30min_array('flowdir')
         lrivermask = self.staticdata['largerivermask']
         if self.dconfig.mode == 'ts':
-            dism3s = self.get_30min_array(dis, np.nan) / (self.daysinmonthdict[kwargs['month']] * 24 * 60
+            dism3s = self.get_30min_array(dis, np.nan) / (self.daysinmonth_dict[kwargs['month']] * 24 * 60
                                                           * 60) * 1000000000
         else:
             dism3s = self.get_30min_array(dis, np.nan) / (365 * 24 * 60 * 60) * 1000000000
@@ -660,9 +667,9 @@ class DryverDownscaling:
                                     - get_inflow_sum(in_valuegrid=dis_largerivers_wg_30min,
                                                      in_flowgrid=flowdir)
                                     )
-        cellpourpixel = self.staticdata['cellpourpixel']
-        correcteddis = correcteddis * cellpourpixel
-        tmp_maxaccudis30min = self.aggmax(correcteddis, 120)
+        cell_pourpixel = self.staticdata['cell_pourpixel']
+        corrected_dis = corrected_dis * cell_pourpixel
+        tmp_maxaccudis30min = self.aggmax(corrected_dis, 120)
         dis_largerivers_hydrosheds_30min = tmp_maxaccudis30min * lrivermask
         cell_dis_contribution_hydrosheds = (dis_largerivers_hydrosheds_30min
                                             - get_inflow_sum(in_valuegrid=dis_largerivers_hydrosheds_30min,
@@ -676,22 +683,22 @@ class DryverDownscaling:
         fa = self.staticdata['30mingap_flowacc']
         transfer_accu_grid = FlowAccTT(transfer_ddm_grid, fa, True).get(transfer_value_grid,
                                                                         no_negative_accumulation=False)
-        new_diff_dis_30min = correctiongrid + ((cell_dis_contribution_dif + transfer_accu_grid)
+        new_diff_dis_30min = correction_grid + ((cell_dis_contribution_dif + transfer_accu_grid)
                                                * lrivermask)
 
         return new_diff_dis_30min
 
-    def shift_correctiongrid(self, correctiongrid):
+    def shift_correction_grid(self, correction_grid):
         flowdir30min = self.get_30min_array('flowdir')
-        corr_grid = ((correctiongrid * self.staticdata['keepgrid'])
-                     + get_inflow_sum(in_valuegrid=(correctiongrid * self.staticdata['shiftgrid']),
+        corr_grid = ((correction_grid * self.staticdata['keepgrid'])
+                     + get_inflow_sum(in_valuegrid=(correction_grid * self.staticdata['shiftgrid']),
                                       in_flowgrid=flowdir30min)
                      )
         return corr_grid
 
-    def smooth_correctiongrid(self, correctiongrid):
+    def smooth_correction_grid(self, correction_grid):
         flowdir30min = self.get_30min_array('flowdir')
-        corr_grid = correctiongrid
+        corr_grid = correction_grid
         for i in range(10):
             down_corr_grid = get_downstream_grid(in_valuegrid=corr_grid, in_flowdir=flowdir30min, out_grid=None)
             min_diff_grid = np.min([np.abs(corr_grid), np.abs(down_corr_grid)],
@@ -728,7 +735,7 @@ class DryverDownscaling:
     def convert_runoff_to_dis(self, runoff, **kwargs):
         #TODO rename method
         if self.dconfig.mode == 'ts':
-            divisionterm = (self.daysinmonthdict[kwargs['month']] * 24 * 60 * 60)
+            divisionterm = (self.daysinmonth_dict[kwargs['month']] * 24 * 60 * 60)
         elif self.dconfig.mode == 'longterm_avg':
             divisionterm = (365 * 24 * 60 * 60)
         else:

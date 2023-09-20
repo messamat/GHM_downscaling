@@ -40,15 +40,15 @@ class DryverDownscalingWrapper:
         data from HydroSHEDS
     daysinmonth : dict
         Dict with key = month as numeric and value = number of days
-    tempdsarray : DownScaleArray
+    temp_downscalearray : DownScaleArray
         Container for temporary results is able to write raster and pickle the data
-    surfacerunoffbaseddis : None or DownScaleArray
+    surfacerunoff_based_dis : None or DownScaleArray
         Initialized with None. Holds in downscaling the surface runoff based discharge
-    correcteddis : None or DownScaleArray
+    corrected_dis : None or DownScaleArray
         Initialized with None. Holds in downscaling corrected discharge
-    corrweights : None or DownScaleArray
+    correction_weights : None or DownScaleArray
         Initialized with None. Holds spatial distribution of correction weights (on 15 arcsec)
-    correctiongrid : None or DownScaleArray
+    correction_grid : None or DownScaleArray
         Initialized with None. Holds correction values with are redistributed (dataset on 30 arcmin)
 
     """
@@ -66,37 +66,38 @@ class DryverDownscalingWrapper:
         self.dconfig = config
         kwargs.update(config.kwargs)
         self.kwargs = kwargs
-        self.wg = WGData(self.dconfig, **kwargs)
-        self.hydrosheds = HydroSHEDSData(self.dconfig, **kwargs)
-        self.wg.calc_continentalarea_to_landarea_conversion_factor()
-        self.wg.calc_surface_runoff_land_mm()
+        self.wg = WGData(self.dconfig, **kwargs) #Get WaterGAP object instance (data and tools related to WG)
+        self.hydrosheds = HydroSHEDSData(self.dconfig, **kwargs) #Get WaterGAP object instance (data and tools related to HydroSHEDS)
+        self.wg.calc_continentalarea_to_landarea_conversion_factor() #Compute conversion factor to concentrate runoff from continental area contained in WG pixels to actual land area
+        self.wg.calc_surface_runoff_land_mm() #Apply conversion factor
         if self.dconfig.mode == 'longterm_avg':
             self.wg.get_longterm_avg_version()
             self.wg.longterm_avg_converted = True
-        self.daysinmonthdict = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
+        self.daysinmonth_dict = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
                                 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
 
-        self.tempdsarray = DownScaleArray(config, self.dconfig.aoi, **kwargs)
-        self.surfacerunoffbaseddis = None
-        self.correcteddis = None
-        self.corrweights = None
-        self.correctiongrid = None
+        self.temp_downscalearray = DownScaleArray(config, self.dconfig.aoi, **kwargs)
+        self.surfacerunoff_based_dis = None
+        self.corrected_dis = None
+        self.correction_weights = None
+        self.correction_grid = None
 
     def prepare(self, staticdata=True, data=True, config=True):
         if self.dconfig.mode == 'ts':
+            #Create a dictionary containing all of the static data necessary across all steps
             if staticdata:
                 staticdata = {
-                    'meanlfr': self.wg.land_fractions.data.reset_index().groupby('arcid')['landareafr'].mean(),
-                    'wginput': self.wg.wginput.data,
+                    'mean_land_fraction': self.wg.land_fractions.data.reset_index().groupby('arcid')['landareafr'].mean(),
+                    'wg_input': self.wg.wg_input.data,
                     'coords': self.wg.coords,
                     'flowacc': self.hydrosheds.flowacc,
                     'landratio_corr': self.hydrosheds.get_wg_corresponding_grid(self.wg.landratio_corr_path),
                     'largerivermask': self.hydrosheds.largerivermask(),
-                    'cellpourpixel': self.hydrosheds.get_cellpourpixel(),
+                    'cell_pourpixel': self.hydrosheds.get_cell_pourpixel(),
                     '30mingap_flowacc': self.hydrosheds.get_wg_corresponding_grid(self.wg.gap_flowacc_path),
                     'keepgrid': self.hydrosheds.keepGrid.copy(),
                     'shiftgrid': self.hydrosheds.shiftGrid.copy(),
-                    'upstreampixelarea': self.hydrosheds.uparea,
+                    'upstream_pixelarea': self.hydrosheds.uparea,
                     'hydrosheds_geotrans': self.hydrosheds.hydrosheds_geotrans,
                     'pixelarea': self.hydrosheds.pixarea,
                     'globallakes_fraction': self.hydrosheds.globallakes_fraction_ar
@@ -107,6 +108,8 @@ class DryverDownscalingWrapper:
                 with open(os.path.join(self.dconfig.temp_dir, 'staticdata.pickle'), 'wb') as f:
                     pickle.dump(staticdata, f)
 
+            #Create a list that holds, for each year-month the time-series data that are required to run the downscaling
+            #Each of these time steps thus represent a discrete "task"
             if data:
                 tasklist = []
                 for yr in range(self.dconfig.startyear, self.dconfig.endyear+1):
@@ -121,7 +124,6 @@ class DryverDownscalingWrapper:
                                                                                'year'])['net_cell_runoff'].loc[
                                 slice(None),
                                 mon, yr],
-
                             'dis': self.wg.dis.data.set_index(['arcid', 'month', 'year'])['dis'].loc[
                                 slice(None), mon, yr],
                             'gwrunoff': self.wg.gw_runoff.data.set_index(['arcid', 'month', 'year'])['variable'].loc[
@@ -134,10 +136,11 @@ class DryverDownscalingWrapper:
                                 slice(None), mon, yr],
                         }
                         if self.dconfig.correct_global_lakes:
-
                             data['gloaddition'] = self.wg.gloaddition.loc[slice(None), yr, mon]
 
                         tasklist.append(data)
+
+                #Write list of tasks to pickl
                 for i, task in enumerate(tasklist, 1):
                     with open('{}data_task{:03d}.pickle'.format(self.dconfig.temp_dir, i), 'wb') as f:
                         pickle.dump(task, f)
@@ -150,6 +153,19 @@ class DryverDownscalingWrapper:
 
 
 def run_prepared_downscaling(path, number_of_worker=2):
+    """
+    Allocate tasks (time steps-continents combinations) to run downscaling on different workers in a parallel
+    processing framework.
+
+    Parameters
+    ----------
+    path
+    number_of_worker
+
+    Returns
+    -------
+
+    """
 
     with open(os.path.join(path, 'config.pickle'), 'rb') as f:
         config = pickle.load(f)
@@ -158,7 +174,8 @@ def run_prepared_downscaling(path, number_of_worker=2):
     poi_list = pool.map(run_tasks, [task for task in glob.glob('{}*task*.pickle'.format(path))])
 
     if isinstance(config.pois, pd.DataFrame):
-        poidf = pd.DataFrame([x[1] for x in poi_list], index=[x[0] for x in poi_list]).sort_index()
+        poidf = pd.DataFrame([x[1] for x in poi_list],
+                             index=[x[0] for x in poi_list]).sort_index()
         poidf.columns = config.pois['stationid'].to_list()
         poidf.to_csv(os.path.join(config.temp_dir ,
                                   '/selected_timeseries_data_{}_{}.csv'.format(config.startyear,

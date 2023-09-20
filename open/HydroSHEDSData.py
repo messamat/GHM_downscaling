@@ -64,7 +64,7 @@ class HydroSHEDSData:
         return os.path.join(self.config.hydrosheds_path,
                             '{}_acc_15s.tif'.format(self.config.continent))
 
-    def get_cellpourpixel(self):
+    def get_cell_pourpixel(self):
         pp = os.path.join(self.config.hydrosheds_path,
                           '{}_cellpourpoint_15s.tif'.format(self.config.continent)
                           )

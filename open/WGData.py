@@ -73,7 +73,7 @@ class WGData:
 
         #Read data and prepare paths -----------------------------------------------------------------------------------
         self.read_variable_kwargs = read_variable_kwargs
-        self.wginput = InputDir().read(config.wg_in_path, explain=False,
+        self.wg_input = InputDir().read(config.wg_in_path, explain=False,
                                        files=['G_FLOWDIR.UNF2', 'GR.UNF2', 'GC.UNF2', 'GCONTFREQ.UNF0'],
                                        additional_files=False, cellarea=True)
         self.continentalarea_to_landarea_conversion_factor = None
@@ -187,7 +187,7 @@ class WGData:
         """
         if self.continentalarea_to_landarea_conversion_factor is None:
             land_fractionswithcont = (self.land_fractions.data.set_index('arcid')
-                                         .merge(self.wginput.data.loc[:, 'GCONTFREQ.UNF0'],
+                                         .merge(self.wg_input.data.loc[:, 'GCONTFREQ.UNF0'],
                                                 left_index=True, right_index=True)
                                          .set_index(['year', 'month'], append=True))
             self.continentalarea_to_landarea_conversion_factor = (
@@ -219,7 +219,7 @@ class WGData:
         -------
         pd.DataFrame
         """
-        a = df.merge(self.wginput.data.reset_index().loc[:, ['arcid', 'cellarea', 'GCONTFREQ.UNF0']],
+        a = df.merge(self.wg_input.data.reset_index().loc[:, ['arcid', 'cellarea', 'GCONTFREQ.UNF0']],
                      left_on='arcid',
                      right_on='arcid')
         a['variable'] = a['variable'] * a['cellarea'] * a['GCONTFREQ.UNF0'] / 100. / 1000000
@@ -269,7 +269,7 @@ class WGData:
         """
         spatial_ix = []
         for x in range(1, self.cell_runoff.nrows+1):
-            arcid_input = self.wginput.data.loc[x]
+            arcid_input = self.wg_input.data.loc[x]
             spatial_ix.append(720 * arcid_input.loc['GR.UNF2'] + arcid_input.loc['GC.UNF2'])
         return spatial_ix
 
@@ -351,10 +351,10 @@ class WGData:
         """
         array = np.full((360, 720), nan)
         if isinstance(s, pd.Series):
-            df = self.wginput.data.merge(s, left_index=True, right_index=True) #Append basic information
+            df = self.wg_input.data.merge(s, left_index=True, right_index=True) #Append basic information
             flowdir = False
         elif s == 'flowdir':
-            df = self.wginput.data.rename(columns={"G_FLOWDIR.UNF2": "variable"})
+            df = self.wg_input.data.rename(columns={"G_FLOWDIR.UNF2": "variable"})
             flowdir = True
         else:
             raise Exception('not implemented')
@@ -431,7 +431,7 @@ class WGData:
                     y = self.aoi[1][1] - ((idx[0]/2) + 0.25)
                     if not np.isnan(value):
                         feat = ogr.Feature(lyr.GetLayerDefn())
-                        # irow, icol = self.wginput.data.loc[x.Index, ['GR.UNF2', 'GC.UNF2']]
+                        # irow, icol = self.wg_input.data.loc[x.Index, ['GR.UNF2', 'GC.UNF2']]
                         feat.SetField("variable", value)
                         pt = ogr.Geometry(ogr.wkbPoint)
                         pt.SetPoint(0, x, y)
@@ -444,7 +444,7 @@ class WGData:
                     row = int((self.aoi[1][1] - x.Y) // 0.5)
                     if not np.isnan(inp[row, col]):
                         feat = ogr.Feature(lyr.GetLayerDefn())
-                        # irow, icol = self.wginput.data.loc[x.Index, ['GR.UNF2', 'GC.UNF2']]
+                        # irow, icol = self.wg_input.data.loc[x.Index, ['GR.UNF2', 'GC.UNF2']]
                         feat.SetField("variable", inp[row, col])
                         pt = ogr.Geometry(ogr.wkbPoint)
                         pt.SetPoint(0, x.X, x.Y)
