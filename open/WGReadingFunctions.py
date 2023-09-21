@@ -1,4 +1,4 @@
-from os import path
+import os
 
 import numpy as np
 import pandas as pd
@@ -10,7 +10,7 @@ class WaterGAPData(object):
         self.data = None
         self.greenland_dropped = False
 
-    def parametrize(self, parameters):
+    def parametrize(self, parameters, constants_folder):
         """
         parametrize the self.data by joining data to it:
         country, continental surface area in the cell, LDD (local drain direction — WaterGAP flow direction)
@@ -40,9 +40,8 @@ class WaterGAPData(object):
 
         #Get parameter table and join it to self.data
         if any(['cont_area' in parameters, 'LDD' in parameters, 'country' in parameters]):
-            join_df = pd.read_csv(path.normpath(path.dirname(__file__) +
-                                                '/../constants/' +
-                                                '{}_ArcID_country_LDD_contarea.txt'.format(self.landmask)),
+            join_df = pd.read_csv(os.path.join(constants_folder,
+                                               '{}_ArcID_country_LDD_contarea.txt'.format(self.landmask)),
                                   sep='\t')
             df = df.merge(join_df, left_on='arcid', right_on='Arc_ID', how='right')
             df = df.drop('Arc_ID', axis=1)
@@ -53,9 +52,9 @@ class WaterGAPData(object):
         self.data = df.loc[:, wanted_cols]
         return self
 
-    def drop_greenland(self):
+    def drop_greenland(self, constants_folder):
         if 'country' not in self.data.columns:
-            df = self.parametrize(['country']).data
+            df = self.parametrize(['country'], constants_folder).data
         else:
             df = self.data
         self.data = df[df.country != 304]
@@ -76,6 +75,7 @@ class Unf(WaterGAPData): #UNF is the file format of WaterGAP input and output fi
         self.unit_mass = None
         self.unit_area_reference = None
         self.unit = (self.unit_mass, self.unit_area_reference, self.unit_time_reference)
+        self.arcid_folderpath = None
         for key in kwargs.keys():
             self.__setattr__(key, kwargs[key])
 
@@ -89,7 +89,7 @@ class Unf(WaterGAPData): #UNF is the file format of WaterGAP input and output fi
             'UNF1': ['>b', bytes],
             'UNF2': ['>H', int],
             'UNF4': ['>i4', int]
-            }
+        }
         if self.filename[-4:] in unf_dtypes.keys():
             return unf_dtypes[self.filename[-4:]]
         else:
@@ -129,7 +129,7 @@ class Unf(WaterGAPData): #UNF is the file format of WaterGAP input and output fi
             self.dtype = self.get_dtype()
         if self.time_step is None or self.ncols is None:
             self.time_step, self.ncols = self.get_timestep()
-            
+
         # get additional information
         data_attributes = {}
         split_fname = self.filename.split('.')
@@ -157,8 +157,8 @@ class Unf(WaterGAPData): #UNF is the file format of WaterGAP input and output fi
         else:
             raise Exception('Something wrent wrong here!')
         return base_name, data_attributes
-    
-    def select_arcids(self, arcids): 
+
+    def select_arcids(self, arcids):
         """
         Subset grid cells by id (i.e. arcid)
         
@@ -173,7 +173,7 @@ class Unf(WaterGAPData): #UNF is the file format of WaterGAP input and output fi
             self.data = self.data[self.data.arcid.isin(arcids)]
         return self
 
-    def append(self, other, verify_integrity=False, **kwargs):
+    def append_unf(self, other, verify_integrity=False, **kwargs):
         """
         appends a unf file of the same variable to each other
 
@@ -184,25 +184,27 @@ class Unf(WaterGAPData): #UNF is the file format of WaterGAP input and output fi
         if isinstance(other, Unf):
             other_unf = other
         else:
-            other_unf = read_unf_file(other, **kwargs)
-            
+            other_unf = read_unf_file(filepath=other,
+                                      arcid_folderpath=self.arcid_folderpath,
+                                      **kwargs)
+
         if (self.time_step != other_unf.time_step
                 or self.nrows != other_unf.nrows
                 or self.ncols != other_unf.ncols
                 or self.vars != other_unf.vars):
             raise Exception('Other Unffile doesnt fit to the first one')
-        
+
         if verify_integrity:
             a = self.data.set_index([x for x in self.data.columns if x != self.vars[0]])
             b = other_unf.data.set_index([x for x in other_unf.data.columns if x != other_unf.vars[0]])
-            self.data = a.append(b, verify_integrity=True).reset_index()
+            self.data = pd.concat([a, b], verify_integrity=True).reset_index()
         else:
-            self.data = self.data.append(other_unf.data)
-            
+            self.data = pd.concat([self.data, other_unf.data])
+
         return self
 
 
-def read_variable(wg_simoutput_path, var, timestep, startyear, endyear, arcid_list=[0], **kwargs):
+def read_variable(wg_simoutput_path, arcid_folderpath, var, timestep, startyear, endyear, arcid_list=[0], **kwargs):
     """
     Read in multiple unf files from a model output path into an unf object
 
@@ -221,31 +223,33 @@ def read_variable(wg_simoutput_path, var, timestep, startyear, endyear, arcid_li
     if len(filenames) == 0:
         raise Exception('Wrong parameters were given')
     else:
-        unf_files = [unf_file.select_arcids(arcid_list) for unf_file in
-                     [read_unf_file(filename, **kwargs) for filename in filenames]]
+        unf_files = [unf_file.select_arcids(arcid_list)
+                     for unf_file in
+                     [read_unf_file(filename, arcid_folderpath=arcid_folderpath, **kwargs)
+                      for filename in filenames]]
 
         result = unf_files[0]
         for i in range(1, len(unf_files)):
-            result.append(unf_files[i], **kwargs)
+            result.append_unf(unf_files[i], **kwargs)
     return result
 
 
 def get_filenames(basepath, var, startyear, endyear, timestep):
     if timestep == 'year':
-        return [path.join(basepath + var + str(yr) + '.UNF0') for yr in range(startyear, endyear + 1)]
+        return [os.path.join(basepath, var + str(yr) + '.UNF0') for yr in range(startyear, endyear + 1)]
     elif timestep == 'month':
-        return [path.join(basepath + var + str(yr) + '.12.UNF0') for yr in range(startyear, endyear + 1)]
+        return [os.path.join(basepath, var + str(yr) + '.12.UNF0') for yr in range(startyear, endyear + 1)]
     elif timestep == 'day31':
         filenamelist = []
         for yr in range(startyear, endyear + 1):
             for month in range(1, 13):
-                filenamelist.append(path.join(basepath + var + str(yr) + '_' + str(month) + '.31.UNF0'))
+                filenamelist.append(os.path.join(basepath, var + str(yr) + '_' + str(month) + '.31.UNF0'))
         return filenamelist
     else:
         raise Exception('not implemented')
 
 
-def read_unf_file(filepath, **kwargs):
+def read_unf_file(filepath, arcid_folderpath, **kwargs):
     """
     Reading in unf files into an unf object
 
@@ -421,8 +425,8 @@ def read_unf_file(filepath, **kwargs):
                      'area_unit': None}
     }
 
-    unf_instance = Unf()
-    unf_instance.filename = path.split(filepath)[-1]
+    unf_instance = Unf(arcid_folderpath=arcid_folderpath)
+    unf_instance.filename = os.path.split(filepath)[-1]
     if unf_instance.filename is None:
         raise ValueError('No filename existing.')
     if len(unf_instance.filename) < 5:
@@ -435,10 +439,9 @@ def read_unf_file(filepath, **kwargs):
     unf_instance.landmask = landmask_ref[unf_instance.nrows]
 
     # get arcids and cast to two-dimensional data.frame
-    arcid_ref = pd.read_csv(path.normpath(path.dirname(__file__) +
-                                          '/../constants/' +
-                                          landmask_ref[unf_instance.nrows] +
-                                          '_arcid_gcrc.txt'),
+    arcid_ref = pd.read_csv(os.path.join(arcid_folderpath,
+                                         landmask_ref[unf_instance.nrows] +
+                                         '_arcid_gcrc.txt'),
                             sep='\t')
     data = pd.DataFrame(data.reshape((unf_instance.nrows, unf_instance.ncols)),
                         columns=range(1, 1 + unf_instance.ncols))
@@ -490,15 +493,17 @@ def read_unf_file(filepath, **kwargs):
         unf_instance.unit = (var_dict[basename]['mass_unit'],
                              var_dict[basename]['area_unit'],
                              unf_instance.unit_time_reference)
+
     if 'select_arcids' in kwargs.keys():
         unf_instance.select_arcids(kwargs['select_arcids'])
+
     return unf_instance
 
 class InputDir:
     def __init__(self):
         self.data = None
-
-    def read(self, path, explain=True, files='all', additional_files=True, drop_greenland=False, **kwargs):
+    def read(self, in_path, arcid_folderpath, explain=True, files='all',
+             additional_files=True, drop_greenland=False, **kwargs):
         """
         Reads watergap input dir and returns a pandas dataframe with information
 
@@ -586,9 +591,10 @@ class InputDir:
 
         inputdata = pd.DataFrame()
         for inputfile in relevant_files:
-            x = read_unf_file(path.join(path, inputfile))
+            x = read_unf_file(os.path.join(in_path, inputfile),
+                              arcid_folderpath=arcid_folderpath)
             if drop_greenland:
-                x = x.drop_greenland()
+                x = x.drop_greenland(constants_folder=arcid_folderpath)
                 x = x.data.iloc[:, 0]
             else:
                 x = x.data.set_index('arcid').iloc[:, 0]
@@ -614,11 +620,11 @@ class InputDir:
                 elev_range = False
 
         if cellarea:
-            garea = np.fromfile(path.join(path, 'GAREA.UNF0'), dtype='>f4').astype(float)
+            garea = np.fromfile(os.path.join(in_path, 'GAREA.UNF0'), dtype='>f4').astype(float)
             inputdata['cellarea'] = [garea[x-1] for x in inputdata['GR.UNF2']]
 
         if elev_range:
-            elev_range = np.fromfile(path.join(path, "G_ELEV_RANGE.101.UNF2"), dtype='>H').astype(int)
+            elev_range = np.fromfile(os.path.join(in_path, "G_ELEV_RANGE.101.UNF2"), dtype='>H').astype(int)
 
             elev_range = pd.DataFrame(elev_range.reshape((inputdata.shape[0], 101)),
                                       columns=['elev_range_{}'.format(x) for x in range(1, 102)])

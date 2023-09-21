@@ -63,6 +63,7 @@ class DownscalingConfig:
                  mode='ts',
                  continent='euassi',
                  pois=False,
+                 constants_folder=None,
                  runoff_src='srplusgwr',
                  correct_global_lakes=True,
                  sr_smoothing=False,
@@ -89,6 +90,7 @@ class DownscalingConfig:
         self.kwargs = kwargs
         self.continent = continent
         self.pois = pois
+        self.constants_folder = constants_folder
         self.runoff_src = runoff_src
         self.correct_global_lakes = correct_global_lakes
         self.sr_smoothing = sr_smoothing

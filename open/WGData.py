@@ -1,5 +1,5 @@
 import pickle
-from os import path
+import os
 
 import pandas as pd
 import numpy as np
@@ -47,7 +47,7 @@ class WGData:
     def __init__(self, config,
                  **kwargs):
         # CSV of longitude, latitude and corresponding ID for each cell in WaterGAP grids
-        self.coords = pd.read_csv(path.join(path.dirname(__file__), '../constants/xyarcid.csv'))
+        self.coords = pd.read_csv(os.path.join(config.constants_folder, 'xyarcid.csv'))
         # Get analysis mode - long-term average or time.series mode
         self.mode = config.mode
 
@@ -63,7 +63,7 @@ class WGData:
             self.aoi = kwargs['area_of_interest']
             arcids = self.coords.set_index(["X", "Y"])
             relative_arcids_df = arcids.sort_index().loc[(slice(self.aoi[0][0], self.aoi[0][1]),
-                                                     slice(self.aoi[1][0], self.aoi[1][1])), 'arcid']
+                                                          slice(self.aoi[1][0], self.aoi[1][1])), 'arcid']
             relative_arcids = relative_arcids_df.values.tolist()
             read_variable_kwargs['arcid_list'] = relative_arcids
             self.coords = relative_arcids_df.reset_index().set_index('arcid')
@@ -73,51 +73,60 @@ class WGData:
 
         #Read data and prepare paths -----------------------------------------------------------------------------------
         self.read_variable_kwargs = read_variable_kwargs
-        self.wg_input = InputDir().read(config.wg_in_path, explain=False,
-                                       files=['G_FLOWDIR.UNF2', 'GR.UNF2', 'GC.UNF2', 'GCONTFREQ.UNF0'],
-                                       additional_files=False, cellarea=True)
+        self.wg_input = InputDir().read(in_path=config.wg_in_path,
+                                        arcid_folderpath=config.constants_folder,
+                                        explain=False,
+                                        files=['G_FLOWDIR.UNF2', 'GR.UNF2', 'GC.UNF2', 'GCONTFREQ.UNF0'],
+                                        additional_files=False, cellarea=True)
         self.continentalarea_to_landarea_conversion_factor = None
         self.surface_runoff_land_mm = None
-        self.land_fractions = read_variable(var='G_LAND_AREA_FRACTIONS_', **read_variable_kwargs)
-        self.surface_runoff = read_variable(var='G_SURFACE_RUNOFF_', **read_variable_kwargs)
-        self.total_runoff = read_variable(var='G_RUNOFF_', **read_variable_kwargs)
-        self.gw_runoff = read_variable(var='G_GW_RUNOFF_mm_', **read_variable_kwargs)
-        self.dis = read_variable(var='G_RIVER_AVAIL_', **read_variable_kwargs)  # km3 / month
+        self.land_fractions = read_variable(var='G_LAND_AREA_FRACTIONS_', arcid_folderpath=config.constants_folder,
+                                            **read_variable_kwargs)
+        self.surface_runoff = read_variable(var='G_SURFACE_RUNOFF_', arcid_folderpath=config.constants_folder,
+                                            **read_variable_kwargs)
+        self.total_runoff = read_variable(var='G_RUNOFF_', arcid_folderpath=config.constants_folder,
+                                          **read_variable_kwargs)
+        self.gw_runoff = read_variable(var='G_GW_RUNOFF_mm_',  arcid_folderpath=config.constants_folder,
+                                       **read_variable_kwargs)
+        self.dis = read_variable(var='G_RIVER_AVAIL_', arcid_folderpath=config.constants_folder,
+                                 **read_variable_kwargs)  # km3 / month
 
         self.config = config
         self.longterm_avg_converted = False
         self.gap_flowacc_path = '{}{}_gap_flowacc.tif'.format(self.config.hydrosheds_path, config.continent)
-        self.landratio_corr_path = path.join(self.config.hydrosheds_path, 'landratio_correction.tif')
+        self.landratio_corr_path = os.path.join(self.config.hydrosheds_path, 'landratio_correction.tif')
 
         #Prepare data for redistribution of volume changes of global lake and reservoir --------------------------------
         if self.config.correct_global_lakes:
-            cell_runoff = read_variable(var='G_CELL_RUNOFF_',
-                                               **read_variable_kwargs).data.set_index(['arcid', 'year', 'month'])
+            cell_runoff = read_variable(var='G_CELL_RUNOFF_', arcid_folderpath=self.config.constants_folder,
+                                        **read_variable_kwargs).data.set_index(['arcid', 'year', 'month'])
             # cell runoff with extra treatment for global lakes and reservoirs
             modrkwargs = read_variable_kwargs.copy()
             modrkwargs['startyear'] = config.startyear - 1
 
             #Compute change in reservoir or lake storage at each time step compared to previous time step
-            glolak = read_variable(var='G_GLO_LAKE_STORAGE_km3_', **modrkwargs).data
+            glolak = read_variable(var='G_GLO_LAKE_STORAGE_km3_', arcid_folderpath=self.config.constants_folder,
+                                   **modrkwargs).data
             diff_glolak = (glolak.set_index(['year', 'month', 'arcid']).unstack() -
-                       glolak.set_index(['year', 'month', 'arcid']).unstack().shift(1)).stack()
+                           glolak.set_index(['year', 'month', 'arcid']).unstack().shift(1)).stack()
 
-            glores = read_variable(var='G_RES_STORAGE_km3_', **modrkwargs).data
+            glores = read_variable(var='G_RES_STORAGE_km3_', arcid_folderpath=self.config.constants_folder,
+                                   **modrkwargs).data
             diff_glores = (glores.set_index(['year', 'month', 'arcid']).unstack() -
-                       glores.set_index(['year', 'month', 'arcid']).unstack().shift(1)).stack()
+                           glores.set_index(['year', 'month', 'arcid']).unstack().shift(1)).stack()
 
             diff_gloresglolak = ((diff_glores + diff_glolak).reset_index().
                                  set_index(['arcid', 'year', 'month']).sort_index())
-            
+
             #Read global lakes and reservoirs redistribution table and subset it if a set of cell IDs were provided
             # to subset WG data
             if 'arcid_list' in read_variable_kwargs:
-                redist_glwd = pd.read_csv(path.join(path.dirname(__file__),
-                                                   '../constants/glolakandresredistribution.csv'))
+                redist_glwd = pd.read_csv(os.path.join(config.constants_folder,
+                                                       'glolakandresredistribution.csv'))
                 redist_glwd = redist_glwd.loc[[x in read_variable_kwargs['arcid_list'] for x in redist_glwd.arcid], :]
             else:
-                redist_glwd = pd.read_csv(path.join(path.dirname(__file__),
-                                                   '../constants/glolakandresredistribution.csv'))
+                redist_glwd = pd.read_csv(os.path.join(config.constants_folder,
+                                                       'glolakandresredistribution.csv'))
 
             #Prepare time series grids to redistribute changes in lake or reservoir storage at every time step
             # from the outflow cell to all cells intersecting with each global lake and reservoir
@@ -163,15 +172,15 @@ class WGData:
         None
         """
         self.cell_runoff.data = (self.cell_runoff.data.groupby(['arcid', 'year'])['net_cell_runoff'].sum().reset_index()
-                                                      .groupby('arcid').mean().reset_index())
+                                 .groupby('arcid').mean().reset_index())
         self.surface_runoff.data = (self.surface_runoff.data.groupby(['arcid', 'year'])['variable'].sum().reset_index()
-                                                            .groupby('arcid').mean().reset_index())
+                                    .groupby('arcid').mean().reset_index())
         self.surface_runoff_land_mm.data = (self.surface_runoff_land_mm.data.groupby(['arcid', 'year'])['variable']
-                                                                          .sum().reset_index()
-                                                                          .groupby('arcid').mean().reset_index())
+                                            .sum().reset_index()
+                                            .groupby('arcid').mean().reset_index())
         self.dis.data = (self.dis.data.groupby(['arcid', 'year'])['dis']
-                                      .sum().reset_index()
-                                      .groupby('arcid').mean().reset_index())
+                         .sum().reset_index()
+                         .groupby('arcid').mean().reset_index())
         self.longterm_avg_converted = True
 
     def calc_continentalarea_to_landarea_conversion_factor(self):
@@ -187,9 +196,9 @@ class WGData:
         """
         if self.continentalarea_to_landarea_conversion_factor is None:
             land_fractionswithcont = (self.land_fractions.data.set_index('arcid')
-                                         .merge(self.wg_input.data.loc[:, 'GCONTFREQ.UNF0'],
-                                                left_index=True, right_index=True)
-                                         .set_index(['year', 'month'], append=True))
+                                      .merge(self.wg_input.data.loc[:, 'GCONTFREQ.UNF0'],
+                                             left_index=True, right_index=True)
+                                      .set_index(['year', 'month'], append=True))
             self.continentalarea_to_landarea_conversion_factor = (
                     land_fractionswithcont['landareafr'] / land_fractionswithcont['GCONTFREQ.UNF0'])
 
@@ -365,7 +374,7 @@ class WGData:
 
         #Subset array to intersect with area of interest
         ar = array[360 - (self.aoi[1][1] + 90) * 2: 360 - (self.aoi[1][0] + 90) * 2,
-                   (self.aoi[0][0] + 180) * 2: (self.aoi[0][1] + 180) * 2]
+             (self.aoi[0][0] + 180) * 2: (self.aoi[0][1] + 180) * 2]
 
         if flowdir:
             # avoid flow out of aoi

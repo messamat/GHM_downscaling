@@ -29,18 +29,19 @@ def main(rtype, rootdir):
     wginpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data',
                             'wghm22e_v001', 'input') #'/home/home1/gm/datasets/input_routing/wghm22e_v001/input/'
     wgpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data', '22eant') #'/home/home8/dryver/22eant/'
-    hydrosheds_path = os.path.join(rootdir, 'data', 'setupdata_for_downscaling') #'/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
-    stations_path = os.path.join(hydrosheds_path, 'stations.csv')
+    setup_folder = os.path.join(rootdir, 'data', 'setupdata_for_downscaling') #'/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
+    stations_path = os.path.join(setup_folder, 'stations.csv')
+    constants_folder = os.path.join(rootdir, 'src', 'DRYVER-main', 'constants')
     pois = pd.read_csv(stations_path) #points of interest
-
-    xmin, xmax, ymin, ymax = get_continental_extent(continentlist)
-    aoi = ((xmin, xmax), (ymin, ymax))
+    if continent in {'eu', 'as', 'si', 'sa'}:
+        xmin, xmax, ymin, ymax = get_continental_extent(continentlist)
+        aoi = ((xmin, xmax), (ymin, ymax))
     if continent == 'rhone':
         aoi = ((3.5, 9), (43, 48.5))
 
     dconfig = DownscalingConfig(wg_in_path=wginpath,
                                 wg_out_path=wgpath,
-                                hydrosheds_path=hydrosheds_path,
+                                hydrosheds_path=setup_folder,
                                 startyear=1901,
                                 endyear=2019,
                                 temp_dir=localdir,
@@ -48,6 +49,7 @@ def main(rtype, rootdir):
                                 write_result='nc',
                                 mode='ts',
                                 continent=continent,
+                                constants_folder=constants_folder,
                                 pois=pois,
                                 runoff_src='srplusgwr',
                                 correct_global_lakes=True,
@@ -82,7 +84,7 @@ def main(rtype, rootdir):
 if __name__ == '__main__':
     rootdir = os.path.dirname(os.path.abspath(
         getsourcefile(lambda:0))).split('\\src')[0]
-    localdir = os.path.join(rootdir, 'results', 'localdir')
+    localdir = os.path.join(rootdir, 'results', 'downscaling_output')
     if not os.path.exists(localdir):
         os.mkdir(localdir)
     main(rftype='ipg80',
