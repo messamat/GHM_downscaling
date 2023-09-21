@@ -41,7 +41,7 @@ class DownscalingConfig:
         trigger to decide if a correction due to deviating river catchments should be corrected in large rvers
     corr_grid_shift: bool, default True
         trigger to decide if the correction values are partially shifted downstream
-    coor_grid_smoothing: bool, default False
+    corr_grid_smoothing: bool, default False
         trigger to decide if the correction values are smoothed downstream
     correction_threshold_per_skm: double, default 0.001
         correction_threshold per square kilometer upstream area how much the raw streamflow is allowed to be modified
@@ -70,7 +70,7 @@ class DownscalingConfig:
                  dis_corr=True,
                  large_river_corr=True,
                  corr_grid_shift=True,
-                 coor_grid_smoothing=False,
+                 corr_grid_smoothing=False,
                  correction_threshold_per_skm=0.001,
                  **kwargs):
 
@@ -96,7 +96,7 @@ class DownscalingConfig:
         self.dis_corr = dis_corr
         self.large_river_corr = large_river_corr
         self.corr_grid_shift = corr_grid_shift
-        self.coor_grid_smoothing = coor_grid_smoothing
+        self.corr_grid_smoothing = corr_grid_smoothing
         self.correction_threshold = correction_threshold_per_skm
         if 'area_of_interest' in kwargs:
             self.aoi = kwargs['area_of_interest']

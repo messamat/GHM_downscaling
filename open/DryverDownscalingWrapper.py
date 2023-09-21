@@ -92,7 +92,7 @@ class DryverDownscalingWrapper:
                     'coords': self.wg.coords,
                     'flowacc': self.hydrosheds.flowacc,
                     'landratio_corr': self.hydrosheds.get_wg_corresponding_grid(self.wg.landratio_corr_path),
-                    'largerivermask': self.hydrosheds.largerivermask(),
+                    'largerivers_mask': self.hydrosheds.largerivers_mask(),
                     'cell_pourpixel': self.hydrosheds.get_cell_pourpixel(),
                     '30mingap_flowacc': self.hydrosheds.get_wg_corresponding_grid(self.wg.gap_flowacc_path),
                     'keepgrid': self.hydrosheds.keepGrid.copy(),

@@ -1,7 +1,7 @@
 
 from flowdirprep import combine_flow_direction_raster
 from simpleflowaccumulation import flow_accumulation
-from shiftgrids import calc_shift_keep_largerivermask_grids
+from shiftgrids import calc_shift_keep_largerivers_mask_grids
 from additional_hsgrids import get_continental_hsgrids
 from copygrids import copygrids
 from stationsrastermapping import create_stationrastermapping
@@ -27,10 +27,10 @@ class PreProcessing:
     - continents_dir_15s.tif (HR raster with flow directions clipped to continents of interest),
     - continents_shiftgrid.tif (LR raster with percentage of how much a correction value should be shifted downstream),
     - continents_keepgrid.tif (LR raster shiftgrid -1 i.e. how much a correction value should be kept),
-    - continents_largeRiverMask.tif (LR raster with 1 where there is a *large* river with matching LR and HR river networks,
+    - continents_largerivers_mask.tif (LR raster with 1 where there is a *large* river with matching LR and HR river networks,
         and 0 in smaller rivers or large rivers with mismatches),
     - continents_gap_flowacc.tif (LR flow accumulation grid of cells which are not *large* rivers with fitting river networks
-      (largeRiverMask.Not)),
+      (largerivers_mask.Not)),
     - continents_cellpourpoint_15s.tif (HR grid with 1 where the HR grid cell has the maximum upstream area per LR grid
       cell),
     - continents_pixarea_15s.tif (HR grid with area of HR grid cells),
@@ -68,7 +68,7 @@ class PreProcessing:
 
         # Prepare shifting of correction terms to downstream HR grid cells
         # and correction for differing characteristics of the river networks in rivers with large catchments
-        calc_shift_keep_largerivermask_grids(upstreamarea_path, flowdir_05deg, area_flowacc_05deg,
+        calc_shift_keep_largerivers_mask_grids(upstreamarea_path, flowdir_05deg, area_flowacc_05deg,
                                              tmpdir, outputdir, continentlist)
 
         # compute HR pourpoints of LR cells and clip HR pixel area and HR global lake fractions to

@@ -7,21 +7,21 @@ from arcpy.sa import Raster, RasterCalculator, Con, IsNull, Aggregate, FlowAccum
 arcpy.CheckOutExtension("Spatial")
 
 
-def calc_shift_keep_largerivermask_grids(in_upstreamarea_path, in_flowdir_30min, in_area_flowacc_30min,
+def calc_shift_keep_largerivers_mask_grids(in_upstreamarea_path, in_flowdir_30min, in_area_flowacc_30min,
                                          tmpdir, outdir, continentlist):
     env.workspace = r'in_memory'
     #Compute maximum HR upstream drainage area in every 30 min cell
-    outAggregate = Aggregate(in_raster=in_upstreamarea_path,
-                             cell_factor=120,
-                             aggregation_type='MAXIMUM')
+    max_HRupa_30min = Aggregate(in_raster=in_upstreamarea_path,
+                                cell_factor=120,
+                                aggregation_type='MAXIMUM')
     if not os.path.exists(tmpdir):
         os.makedirs(tmpdir)
 
     arcpy.Clip_management(in_raster=Raster(in_flowdir_30min), out_raster='{}flowdir_30min.tif'.format(tmpdir),
-                          in_template_dataset=outAggregate)
+                          in_template_dataset=max_HRupa_30min)
     arcpy.Clip_management(in_raster=Raster(in_area_flowacc_30min), out_raster='{}area_flowacc_30min.tif'.format(tmpdir),
-                          in_template_dataset=outAggregate)
-    outAggregate.save('{}MaxUpArea_05deg.tif'.format(tmpdir))
+                          in_template_dataset=max_HRupa_30min)
+    max_HRupa_30min.save('{}MaxUpArea_05deg.tif'.format(tmpdir))
 
     #---------- Prepare shifting of correction terms to downstream HR grid cells ---------------------------------------
     get_downstream_grid(grid='{}MaxUpArea_05deg.tif'.format(tmpdir),
@@ -41,14 +41,15 @@ def calc_shift_keep_largerivermask_grids(in_upstreamarea_path, in_flowdir_30min,
     areadifp = RasterCalculator([MaxUpArea, flowacc30min], ["MaxUpArea", "flowacc30min"],
                                 "((MaxUpArea-flowacc30min)/flowacc30min) * 100")
     areadifp.save('{}areadifp.tif'.format(tmpdir))
+    
     #Make a mask of large rivers for which upa for HydroSHEDS and DDRM30 match relatively well
-    largeRiverMask = Con((((MaxUpArea >= 100000) & (areadifp >= -50) & (areadifp <= 50)) |
+    largerivers_mask = Con((((MaxUpArea >= 100000) & (areadifp >= -50) & (areadifp <= 50)) |
                           ((MaxUpArea >= 50000) & (areadifp >= -20) & (areadifp <= 20))), 1, 0)
-    largeRiverMask = Con(IsNull(largeRiverMask), 0, largeRiverMask)
-    largeRiverMask.save('{}{}_largeRiverMask.tif'.format(outdir, ''.join(continentlist)))
-    gapMask = Con(largeRiverMask == 0, 1, 0) #opposite of largeRiverMask
+    largerivers_mask = Con(IsNull(largerivers_mask), 0, largerivers_mask)
+    largerivers_mask.save('{}{}_largerivers_mask.tif'.format(outdir, ''.join(continentlist)))
+    gapMask = Con(largerivers_mask == 0, 1, 0) #opposite of largerivers_mask
     gapflowdir = Raster('{}flowdir_30min.tif'.format(tmpdir)) * gapMask
     gap_flowacc = FlowAccumulation(in_flow_direction_raster=gapflowdir, data_type="INTEGER")
     gap_flowacc.save('{}{}_gap_flowacc.tif'.format(outdir, ''.join(continentlist)))
-    del MaxUpArea, MaxUpAreaDown, areadifp, outAggregate, gap_flowacc, flowacc30min, gapflowdir, gapMask, keep, shift, largeRiverMask
+    del MaxUpArea, MaxUpAreaDown, areadifp, outAggregate, gap_flowacc, flowacc30min, gapflowdir, gapMask, keep, shift, largerivers_mask
     shutil.rmtree(tmpdir)

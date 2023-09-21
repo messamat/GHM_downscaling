@@ -146,7 +146,7 @@ class DryverDownscaling:
 
         Then the lr correction values are applied with the hr correction weights to the runoffbased discharge. In this
         process a limit for the correction values based on upstream area and removing artifacts mechanism can be
-        activated (see also :func:`~DryverDownscaling.DryverDownscaling.calc_corrected_dis`)
+        activated (see also :func:`~DryverDownscaling.DryverDownscaling.correct_dis`)
 
         **Methods to improve the correction mechanisms (2)**
 
@@ -154,7 +154,7 @@ class DryverDownscaling:
         The hr river network includes more endorheic sinks than the lr river network due the resolution. Thus the
         correction values may not be sufficient. To account for this an additional adaption of the correction values
         are done. This is done if algorithms ref and ref_srplusgwr are chosen. For more information see
-        :func:`~DryverDownscaling.DryverDownscaling.get_lrc_correction_grid`
+        :func:`~DryverDownscaling.DryverDownscaling.get_largerivers_correction_grid`
 
         **Partial shifting the correction grid**
         We don't know where in a lr grid cell the difference between runoff aggregated discharge and actual discharge
@@ -172,6 +172,7 @@ class DryverDownscaling:
         """
         #
         print('timestep {} {} started'.format(month, year))
+        #Get and pre-format WG data to process -------------------------------------------------------------------------
         if self.dconfig.runoff_src == 'cellrunoff':
             cellrunoff = self.taskdata['netdis_30min_series'].dropna()
 
@@ -210,12 +211,7 @@ class DryverDownscaling:
             reliable_surfacerunoff_ar = self.get_30min_array(sr, np.nan)
         del sr
 
-        netdis_30min_series = self.taskdata['netdis_30min_series']
-        netdis_30min_series.name = 'variable'
-        dis = self.taskdata['dis']
-        dis.name = 'variable'
-        
-        #--------- Compute initial 15-sec runoff-based cell discharge -------------------------------------------------------
+        #--------- Compute initial 15-sec runoff-based cell discharge ---------------------------------------------------
         # if sr.smoothing == True: remove outliers
         # inverse distance interpolation from lr to intermediate resolution of 0.1 degree
         # if sr.smoothing == True: perform 5x5 mean filtering on 6 min raster (excluding NAs)
@@ -231,11 +227,15 @@ class DryverDownscaling:
             return self.flow_acc(runoffbased_celldis_15s_ar)
         del reliable_surfacerunoff_ar
         
-        #Compute correction values to route downstream -----------------------------------------------------------------
+        #Compute correction values -------------------------------------------------------------------------------------
+        #Compute initial correction values in each 30-min cell
         #the sum of disaggregated runoff-based discharge from all HR cells within each LR cell is compared to the net
         # discharge which is generated in this LR cell (this serves to account for additional information from the
         # routing routine of the LR GHM, in particular about the impact of surface water bodies and human water use on
         # streamflow).
+        netdis_30min_series = self.taskdata['netdis_30min_series']
+        netdis_30min_series.name = 'variable'
+
         correction_grid_30min = self.calculate_lr_correctionvalues(runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
                                                                    netdis_30min_series=netdis_30min_series,
                                                                    month=month, yr=year)
@@ -247,32 +247,35 @@ class DryverDownscaling:
         else:
             correction_weights_15s = self.get_corrweight(runoffbased_celldis_15s_ar)
 
-        # Apply an even greater proportion of the correction on larger rivers (if large_river_corr is True)
+        #Change correction values in 30-min cells to apply an even greater proportion of the correction on large rivers
+        # (if large_river_corr is True)
         if self.dconfig.large_river_corr:
-            corrected_dis = self.calc_corrected_dis(correction_grid_30min=correction_grid_30min,
-                                                    correction_weights_15s=correction_weights_15s,
-                                                    runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
-                                                    month=month)
-            dis = self.taskdata['dis']
-            dis.name = 'variable'
-            correction_grid_30min = self.get_lrc_correction_grid(dis,
-                                                           correction_grid_30min=correction_grid_30min,
-                                                           corrected_dis=corrected_dis,
-                                                           month=month)
-            del corrected_dis
+            corrected_dis_15s = self.correct_dis(correction_grid_30min=correction_grid_30min,
+                                                 correction_weights_15s=correction_weights_15s,
+                                                 runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
+                                                 month=month)
+            wg_dis_30min = self.taskdata['dis']
+            wg_dis_30min.name = 'variable'
+            correction_grid_30min = self.get_largerivers_correction_grid(
+                wgdis_series_30min=wg_dis_30min,
+                correction_grid_30min=correction_grid_30min,
+                precorrected_dis=corrected_dis_15s,
+                month=month)
+            del corrected_dis_15s
 
+        #Shift and smooth correction values downstream at 30-min
         if self.dconfig.corr_grid_shift:
             correction_grid_30min = self.shift_correction_grid(correction_grid_30min)
-        if self.dconfig.coor_grid_smoothing:
+        if self.dconfig.corr_grid_smoothing:
             correction_grid_30min = self.smooth_correction_grid(correction_grid_30min)
-            
-        # Apply correction and accumulate discharge
-        corrected_dis = self.calc_corrected_dis(correction_grid_30min=correction_grid_30min,
-                                                correction_weights_15s=correction_weights_15s,
-                                                runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
-                                                correction_threshold=self.dconfig.correction_threshold,
-                                                month=month)
-        return corrected_dis
+
+        #Apply correction at 15-sec and accumulate corrected net discharge downstream ----------------------------------
+        corrected_dis_15s = self.correct_dis(correction_grid_30min=correction_grid_30min,
+                                             correction_weights_15s=correction_weights_15s,
+                                             runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
+                                             correction_threshold=self.dconfig.correction_threshold,
+                                             month=month)
+        return corrected_dis_15s
 
     def save_and_run_ts(self):
         """
@@ -339,6 +342,7 @@ class DryverDownscaling:
     def get_runoff_based_celldis(self, reliable_surfacerunoff_ar,
                              **kwargs):
         """
+        Convert WG runoff at 30 min to net discharge in 15 sec cells, correcting for global lakes and reservoirs
 
         Parameters
         ----------
@@ -756,7 +760,7 @@ class DryverDownscaling:
             )
         return dis_corr_weight
 
-    def calc_corrected_dis(self, correction_grid_30min, correction_weights_15s, runoffbased_celldis_15s_ar,
+    def correct_dis(self, correction_grid_30min, correction_weights_15s, runoffbased_celldis_15s_ar,
                            correction_threshold=0.001, **kwargs):
         """
         Based on the raw discharge calculated with disaggregated runoff, a lr correction grid and correction weights
@@ -798,7 +802,7 @@ class DryverDownscaling:
             celldis_correctionvalue_15s = np.minimum(np.abs(celldis_correctionvalue_15s), ctar) 
             #Re-assign correct sign to each correction weight
             celldis_correctionvalue_15s = celldis_correctionvalue_15s * corr_sign
-            del negative_corr
+            del corr_sign
         
         #Apply correction values to flow-accumulated runoff-based discharge
         corrected_celldis = runoffbased_celldis_15s_ar + celldis_correctionvalue_15s
@@ -813,8 +817,7 @@ class DryverDownscaling:
             
         return corrected_dis
 
-    ######### TO CHECK AND COMMENT #####################
-    def get_lrc_correction_grid(self, dis, corrected_dis, correction_grid_30min, **kwargs):
+    def get_largerivers_correction_grid(self, wgdis_series_30min, precorrected_dis, correction_grid_30min, **kwargs):
         """
         This method adapts the correction grid to account for differences in river networks (i.e. missing endorheic
         sinks). This adaption is only done in large rivers ( geq 50000 km2)
@@ -822,7 +825,7 @@ class DryverDownscaling:
         Parameters
         ----------
         dis
-        corrected_dis
+        precorrected_dis
         correction_grid_30min
         kwargs
 
@@ -832,39 +835,60 @@ class DryverDownscaling:
         """
 
         flowdir = self.get_30min_array('flowdir')
-        lrivermask = self.staticdata['largerivermask']
+        largerivers_mask_30min = self.staticdata['largerivers_mask']
+        
+        #Convert discharge to m3/s (from km3/month if mode==ts or km3/yr if mode==long-term average
         if self.dconfig.mode == 'ts':
-            dism3s = self.get_30min_array(dis, np.nan) / (self.daysinmonth_dict[kwargs['month']] * 24 * 60
+            wgdis_30min_m3s = self.get_30min_array(wgdis_series_30min, np.nan) / (self.daysinmonth_dict[kwargs['month']] * 24 * 60
                                                           * 60) * 1000000000
         else:
-            dism3s = self.get_30min_array(dis, np.nan) / (365 * 24 * 60 * 60) * 1000000000
-        dis_largerivers_wg_30min = dism3s * lrivermask
-        cell_dis_contribution_wg = (dis_largerivers_wg_30min
-                                    - get_inflow_sum(in_valuegrid=dis_largerivers_wg_30min,
+            wgdis_30min_m3s = self.get_30min_array(wgdis_series_30min, np.nan) / (365 * 24 * 60 * 60) * 1000000000
+        
+        #Compute net discharge in large river 30 min cells from WG discharge data
+        wgdis_largerivers_30min = wgdis_30min_m3s * largerivers_mask_30min
+        net_wgdis_largerivers_30min = (wgdis_largerivers_30min
+                                    - get_inflow_sum(in_valuegrid=wgdis_largerivers_30min,
                                                      in_flowgrid=flowdir)
                                     )
+        #Compute maximum 15 sec accumulated pre-corrected discharge in each large river 30 min cell
         cell_pourpixel = self.staticdata['cell_pourpixel']
-        corrected_dis = corrected_dis * cell_pourpixel
-        tmp_maxaccudis30min = self.aggmax(corrected_dis, 120)
-        dis_largerivers_hydrosheds_30min = tmp_maxaccudis30min * lrivermask
-        cell_dis_contribution_hydrosheds = (dis_largerivers_hydrosheds_30min
-                                            - get_inflow_sum(in_valuegrid=dis_largerivers_hydrosheds_30min,
-                                                             in_flowgrid=flowdir)
-                                            )
-        cell_dis_contribution_dif = cell_dis_contribution_wg - cell_dis_contribution_hydrosheds
-        gapmask = 1 - lrivermask
-        transfer_value_grid = gapmask * cell_dis_contribution_dif
-        transfer_ddm_grid = flowdir * (1 - lrivermask)
-        transfer_ddm_grid[flowdir == -99] = -99
-        fa = self.staticdata['30mingap_flowacc']
-        transfer_accu_grid = FlowAccTT(transfer_ddm_grid, fa, True).get(transfer_value_grid,
-                                                                        no_negative_accumulation=False)
-        new_diff_dis_30min = correction_grid_30min + ((cell_dis_contribution_dif + transfer_accu_grid)
-                                                * lrivermask)
+        precorrected_dis = precorrected_dis * cell_pourpixel
+        accumulated_precorrecteddis_30min = self.aggmax(precorrected_dis, 120)
+        accumulated_precorrecteddis_30min_largerivers = accumulated_precorrecteddis_30min * largerivers_mask_30min
+        
+        #Compute net pre-corrected discharge in each large river 30 min cell
+        net_precorrecteddis_largerivers_30min = (accumulated_precorrecteddis_30min_largerivers
+                                           - get_inflow_sum(in_valuegrid=accumulated_precorrecteddis_30min_largerivers,
+                                                            in_flowgrid=flowdir)
+                                           )
+
+        #Compute difference in net discharge from WG and from the accumulated corrected discharge
+        net_dis_dif_largerivers_30min = net_wgdis_largerivers_30min - net_precorrecteddis_largerivers_30min
+
+        #Transfer net_dis_dif from outside the large-rivers mask to large rivers downstream
+        gapmask_30min = 1 - largerivers_mask_30min
+        transfer_value_grid = gapmask_30min * net_dis_dif_largerivers_30min #Isn't this all equal to 0? I think that net_dis_dif should be first computed outside of large rivers masks
+
+        gap_flowdir_30min = flowdir * (1 - largerivers_mask_30min)
+        gap_flowdir_30min[flowdir == -99] = -99
+
+        gap_flowacc = self.staticdata['30mingap_flowacc']
+        transfer_accu_grid = FlowAccTT(in_flowdir=gap_flowdir_30min,
+                                       in_static_flowacc=gap_flowacc,
+                                       pad=True).get(
+            in_valuegrid=transfer_value_grid,
+            no_negative_accumulation=False)
+
+        #Compute final net discharge correction value for large rivers
+        new_diff_dis_30min = correction_grid_30min + ((net_dis_dif_largerivers_30min + transfer_accu_grid)
+                                                * largerivers_mask_30min)
 
         return new_diff_dis_30min
 
     def shift_correction_grid(self, correction_grid_30min):
+        #For each cell, partially shift the correction value to the next LR downstream cell
+        # if the maximum HR upstream area in the next LR downstream cell is at least 0.9*maximum HR upstream area in the cell
+        # This process is to focus correction even more strongly on large rivers
         flowdir30min = self.get_30min_array('flowdir')
         corr_grid = ((correction_grid_30min * self.staticdata['keepgrid'])
                      + get_inflow_sum(in_valuegrid=(correction_grid_30min * self.staticdata['shiftgrid']),
@@ -873,17 +897,47 @@ class DryverDownscaling:
         return corr_grid
 
     def smooth_correction_grid(self, correction_grid_30min):
+        """
+        For all cells for which the correction value does not match that of the downstream cell. Decrease the difference
+        in values between the two cells by:
+         - if the correction value in the upstream cell is negative and that of the downstream cell is negative,
+            adding the minimum value among the two cells to the upstream cell
+         - if the correction value in the upstream cell is positive and that of the downstream cell is positive,
+            substract the minimum value among the two cells from the upstream cell
+        Then balance the total correction by adding (substracting) to the downstream cell the sum of all values that
+        were substracted (added) from upstream cells.
+        -> Not fully sure that it's performing as desired. TBD
+
+        Parameters
+        ----------
+        correction_grid_30min - grid of correction values to smooth
+
+        Returns
+        -------
+
+        """
+
         flowdir30min = self.get_30min_array('flowdir')
         corr_grid = correction_grid_30min
+
         for i in range(10):
-            down_corr_grid = get_downstream_grid(in_valuegrid=corr_grid, in_flowdir=flowdir30min, out_grid=None)
-            min_diff_grid = np.min([np.abs(corr_grid), np.abs(down_corr_grid)],
+            downstream_corr_grid = get_downstream_grid(in_valuegrid=corr_grid, in_flowdir=flowdir30min, out_grid=None)
+            #Identify the minimum absolute correction value between each cell and its downstream cell
+            min_diff_grid = np.min([np.abs(corr_grid), np.abs(downstream_corr_grid)],
                                    axis=0)
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
-                sign_grid = (((corr_grid < 0) * (down_corr_grid > 0)).astype(int) -
-                             ((corr_grid > 0) * (down_corr_grid < 0)).astype(int))
+                #Assign 1 where the correction value for a cell is negative and it is positive for the cell downstream
+                #Assign -1 where the correction value for a cell is positive and it is negative for the cell downstream
+                #0 when the correction value is the same sign in both cells
+                sign_grid = (((corr_grid < 0) * (downstream_corr_grid > 0)).astype(int) -
+                             ((corr_grid > 0) * (downstream_corr_grid < 0)).astype(int))
+            #Change the sign of the upstream grid cell to match that of the downstream grid cell.
+            #Don't apply a correction if they have the same sign
             change_grid = sign_grid * min_diff_grid
+
+            #Balance change in upstream cells with the corresponding total change with the opposite sign in the
+            #downstream cell to make sure that the total correction remains equal across the basin
             inflow_change_grid = get_inflow_sum(in_valuegrid=change_grid, in_flowdir=flowdir30min)
             corr_grid = corr_grid + change_grid - inflow_change_grid
 

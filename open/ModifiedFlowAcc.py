@@ -6,7 +6,7 @@ import numpy as np
 
 
 class FlowAccTT:
-    def __init__(self, in_flowdir, in_flowacc, pad=True):
+    def __init__(self, in_flowdir, in_static_flowacc, pad=True):
         """ Flow accumulation class, which builds upon flow direction and a static flow accumulation.
 
         This class takes flow directions and a static flow accumulation (generated with ArcGIS no weights with the same
@@ -15,8 +15,8 @@ class FlowAccTT:
 
         :param in_flowdir: Flow directions
         :type in_flowdir: path or np.ndarray
-        :param in_flowacc: Flow accumulations
-        :type in_flowacc: path or np.ndarray
+        :param in_static_flowacc: Flow accumulations
+        :type in_static_flowacc: path or np.ndarray
         """
 
         #Read and format data ------------------------------------------------------------------------------------------
@@ -28,11 +28,11 @@ class FlowAccTT:
         else:
             raise Exception
 
-        if isinstance(in_flowacc, np.ndarray):
-            self.flowacc = in_flowacc
+        if isinstance(in_static_flowacc, np.ndarray):
+            self.flowacc = in_static_flowacc
             self.flowacc_nan = -9999
-        elif os.path.exists(in_flowacc):
-            flowacc = gdal.Open(in_flowacc)
+        elif os.path.exists(in_static_flowacc):
+            flowacc = gdal.Open(in_static_flowacc)
             self.flowacc = flowacc.ReadAsArray().copy()
             self.flowacc_nan = flowacc.GetRasterBand(1).GetNoDataValue()
         else:

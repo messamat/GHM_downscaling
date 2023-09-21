@@ -56,7 +56,7 @@ def main(rtype, rootdir):
                                 dis_corr=True,
                                 large_river_corr=True,
                                 corr_grid_shift=True,
-                                coor_grid_smoothing=False,
+                                corr_grid_smoothing=False,
                                 correction_threshold_per_skm=0.001,
                                 area_of_interest=aoi,
                                 # corrweightfactor=0.1

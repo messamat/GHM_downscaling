@@ -12,7 +12,7 @@ _dir_geq0_15s.tif
 _flowacc_15s.tif
 _cellpourpoint_15s.tif
 shiftPercentGridv9.tif
-largeRiverMask.tif
+largerivers_mask.tif
 _pixarea_15s.tif
 """
 
@@ -36,7 +36,7 @@ class HydroSHEDSData:
 
         self.flowdir = self.read_flowdir()
         self.hydrosheds_geotrans = self.flowdir.GetGeoTransform()
-        self.flowacc = FlowAccTT(in_flowdir=self.flowdir.ReadAsArray(), in_flowacc=self.get_flowacc_path())
+        self.flowacc = FlowAccTT(in_flowdir=self.flowdir.ReadAsArray(), in_static_flowacc=self.get_flowacc_path())
         self.pixarea, self.uparea = self.get_pixarea_upstream_area()
         self.globallakes_fraction_15s_ar = self.get_globallakes_fraction()
         self.keepGrid, self.shiftGrid = self.get_downstream_shift_grids()
@@ -116,9 +116,9 @@ class HydroSHEDSData:
 
         return raar
 
-    def largerivermask(self):
-        lriver = '{}{}_largeRiverMask.tif'.format(self.config.hydrosheds_path, self.config.continent)
-        return self.get_wg_corresponding_grid(lriver)
+    def largerivers_mask(self):
+        largerivers = '{}{}_largerivers_mask.tif'.format(self.config.hydrosheds_path, self.config.continent)
+        return self.get_wg_corresponding_grid(largerivers)
 
     @Timer(name='decorator', text='preparing the l12 harmonization took {seconds:.0f}s')
     def prepare_level12_harmonize(self):
