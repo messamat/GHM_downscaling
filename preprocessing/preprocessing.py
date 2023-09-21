@@ -1,10 +1,11 @@
+import os
 
-from flowdirprep import combine_flow_direction_raster
-from simpleflowaccumulation import flow_accumulation
-from shiftgrids import calc_shift_keep_largerivers_mask_grids
-from additional_hsgrids import get_continental_hsgrids
-from copygrids import copygrids
-from stationsrastermapping import create_stationrastermapping
+from preprocessing.flowdirprep import combine_flow_direction_raster
+from preprocessing.simpleflowaccumulation import flow_accumulation
+from preprocessing.shiftgrids import calc_shift_keep_largerivers_mask_grids
+from preprocessing.additional_hsgrids import get_continental_hsgrids
+from preprocessing.copygrids import copygrids
+from preprocessing.stationsrastermapping import create_stationrastermapping
 
 
 class PreProcessing:
@@ -46,34 +47,37 @@ class PreProcessing:
     def __init__(self, setup_folder, outputdir, tmpdir, continentlist):
         flowdir_gdbpath = r'{}flow_dir_15s_by_continent.gdb'.format(setup_folder)
         pixelarea_path = r'{}pixel_area_skm_15s.gdb\px_area_skm_15s'.format(setup_folder)
-        flowdir_05deg = r'{}flowdir_30min.tif'.format(setup_folder)
-        area_flowacc_05deg = r"{}orgDDM30area.tif".format(setup_folder)
+        flowdir_30min = r'{}flowdir_30min.tif'.format(setup_folder)
+        area_flowacc_30min = r"{}orgDDM30area.tif".format(setup_folder)
         globallakes_fraction_15s = r'{}pixareafraction_glolakres_15s.tif'.format(setup_folder)
         landratio = r'landratio_correction.tif'
         stations = r'{}stations_europe.geojson'.format(setup_folder)
 
-        flowdir_path = outputdir + ''.join(x for x in continentlist) + '_dir_15s.tif'
-        flowacc_path = outputdir + ''.join(x for x in continentlist) + '_acc_15s.tif'
-        upstreamarea_path = outputdir + ''.join(x for x in continentlist) + '_upa_15s.tif'
+        flowdir_path = os.path.join(outputdir,
+                                    '{}_dir_15s.tif'.format(''.join(x for x in continentlist)))
+        flowacc_path = os.path.join(outputdir,
+                                    '{}_acc_15s.tif'.format(''.join(x for x in continentlist)))
+        upa_path = os.path.join(outputdir,
+                                    '{}_upa_15s.tif'.format(''.join(x for x in continentlist)))
 
         # Standard mosaic flow dir rasters
         combine_flow_direction_raster(flowdir_gdbpath, continentlist, outputdir)
 
-        # Standard flow acc -> upstreamarea_path
+        # Standard flow acc -> upa_path
         flow_accumulation(in_flowdir_path=flowdir_path,
                           in_pixarea_path=pixelarea_path,
                           out_flowacc_path=flowacc_path,
-                          out_upstreamarea_path=upstreamarea_path
+                          out_upa_path=upa_path
                           )
 
         # Prepare shifting of correction terms to downstream HR grid cells
         # and correction for differing characteristics of the river networks in rivers with large catchments
-        calc_shift_keep_largerivers_mask_grids(upstreamarea_path, flowdir_05deg, area_flowacc_05deg,
-                                             tmpdir, outputdir, continentlist)
+        calc_shift_keep_largerivers_mask_grids(upa_path, flowdir_30min, area_flowacc_30min,
+                                               tmpdir, outputdir, continentlist)
 
         # compute HR pourpoints of LR cells and clip HR pixel area and HR global lake fractions to
         # union of continents in continentlist
-        get_continental_hsgrids(continentlist, upstreamarea_path, pixelarea_path, globallakes_fraction_15s, outputdir)
+        get_continental_hsgrids(continentlist, upa_path, pixelarea_path, globallakes_fraction_15s, outputdir)
 
         #Copy 'landratio_correction.tif' to setup folder
         copygrids([landratio], setup_folder, outputdir)

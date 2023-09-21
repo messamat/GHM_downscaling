@@ -115,9 +115,9 @@ def get_inflow_sum(in_valuegrid, in_flowdir):
 
 
 def main():
-    get_downstream_grid(in_valuegrid="D:/tmp/gen_shiftpercentgrid/MaxUpArea_30min.tif",
+    get_downstream_grid(in_valuegrid="D:/tmp/gen_shiftpercentgrid/max_upa_30min.tif",
                         in_flowdir="D:/tmp/gen_shiftpercentgrid/flowdir_30min.tif",
-                        out_grid="D:/tmp/gen_shiftpercentgrid/MaxUpArea_down_30min.tif")
+                        out_grid="D:/tmp/gen_shiftpercentgrid/max_upa_down_30min.tif")
 
 
 if __name__ == '__main__':

@@ -1,13 +1,12 @@
 import osgeo.gdal
 import pandas as pd
-from osgeo import ogr
+from osgeo import ogr, gdal
 
-
-def create_stationrastermapping(flowacc_path, stations_vector,  outputdir):
+def create_stationrastermapping(in_flowacc_path, in_stations_vector,  outputdir):
     driver = ogr.GetDriverByName('GeoJSON')
-    datasource = driver.Open(stations_vector)
+    datasource = driver.Open(in_stations_vector)
     stations = datasource.GetLayer()
-    gt = gdal.Open(flowacc_path).GetGeoTransform()
+    gt = gdal.Open(in_flowacc_path).GetGeoTransform()
 
     def get_row_col(x, y):
         ulX = gt[0] #upper left corner x (longitude) in projection coordinates

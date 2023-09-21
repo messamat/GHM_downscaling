@@ -1,6 +1,8 @@
 import arcpy
+import os
 
 
 def copygrids(rasters, inputdir, outputdir):
     for x in rasters:
-        arcpy.CopyRaster_management('{}{}'.format(inputdir, x), '{}{}'.format(outputdir, x))
+        arcpy.management.CopyRaster(os.path.join(inputdir, x),
+                                    os.path.join(outputdir, x))

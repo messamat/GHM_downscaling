@@ -97,7 +97,7 @@ class DryverDownscalingWrapper:
                     '30mingap_flowacc': self.hydrosheds.get_wg_corresponding_grid(self.wg.gap_flowacc_path),
                     'keepgrid': self.hydrosheds.keepGrid.copy(),
                     'shiftgrid': self.hydrosheds.shiftGrid.copy(),
-                    'upstream_pixelarea': self.hydrosheds.uparea,
+                    'upstream_pixelarea': self.hydrosheds.upa,
                     'hydrosheds_geotrans': self.hydrosheds.hydrosheds_geotrans,
                     'pixelarea': self.hydrosheds.pixarea,
                     'globallakes_fraction_15s': self.hydrosheds.globallakes_fraction_15s_ar
