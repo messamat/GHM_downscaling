@@ -1,0 +1,9 @@
+A. Download and install ArcGIS pro 3.0
+
+B. Install GDAL:
+    If using ArcGIS pro 3.0,
+    1. create virtual python environment
+    2. download GDAL-3.3.3-cp39-cp39-win_amd64.whl found here: https://www.lfd.uci.edu/~gohlke/pythonlibs/#gdal
+    3. install it with the following command in terminal (adjust paths):
+    D:\\global_downscaling\\src\\DRYvER-main\\arcgis_venv\\python.exe -m pip install "D:\\global_downscaling\\bin\\GDAL-3.3.3-cp39-cp39-win_amd64.whl"
+

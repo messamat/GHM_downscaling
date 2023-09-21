@@ -1,17 +1,33 @@
 import arcpy
+import os
 
-def combine_flow_direction_raster(hsflowdir_gdbpath, continentlist , outpath):
-    arcpy.env.workspace = hsflowdir_gdbpath
+def combine_flow_direction_raster(hydrosheds_flowdirgdb_path, continentlist, outputdir,
+                                  verbose=True, overwrite=True):
+    arcpy.env.workspace = hydrosheds_flowdirgdb_path
 
-    if len(continentlist) > 1:
-        arcpy.management.MosaicToNewRaster(
-            input_rasters=";".join(['{}_dir_15s'.format(x) for x in continentlist]),
-            output_location=outpath,
-            raster_dataset_name_with_extension='{}_dir_15s.tif'.format(''.join(x for x in continentlist)),
-            number_of_bands=1)
+    outpath = os.path.join(outputdir, '{}_dir_15s.tif').format(''.join(x for x in continentlist))
 
-    elif len(continentlist) == 1:
-        arcpy.management.CopyRaster(in_raster='{}_dir_15s'.format(continentlist[0]),
-                                    out_rasterdataset='{0}{1}_dir_15s.tif'.format(outpath, continentlist[0]))
+    if not arcpy.Exists(outpath) or overwrite:
+        if verbose:
+            print("Combining flow direction rasters...")
+
+        if len(continentlist) > 1:
+            if verbose:
+                print("Multiple rasters were provided. Mosaicking them...")
+            arcpy.management.MosaicToNewRaster(
+                input_rasters=";".join(['{}_dir_15s'.format(x) for x in continentlist]),
+                output_location=outputdir,
+                raster_dataset_name_with_extension=os.path.split(outpath)[1],
+                number_of_bands=1)
+
+        elif len(continentlist) == 1:
+            if verbose:
+                print("A single raster was provided. Copying it...")
+            arcpy.management.CopyRaster(in_raster='{}_dir_15s'.format(continentlist[0]),
+                                        out_rasterdataset=outpath)
+        else:
+            raise Exception("Please handover proper continentlist")
     else:
-        raise Exception("Please handover proper continentlist")
+        if verbose:
+            print("{} already exists and overwrite==False. Skipping...".format(outpath))
+

@@ -44,14 +44,15 @@ class PreProcessing:
 
 
     """
-    def __init__(self, setup_folder, outputdir, tmpdir, continentlist):
-        flowdir_gdbpath = r'{}flow_dir_15s_by_continent.gdb'.format(setup_folder)
-        pixelarea_path = r'{}pixel_area_skm_15s.gdb\px_area_skm_15s'.format(setup_folder)
-        flowdir_30min = r'{}flowdir_30min.tif'.format(setup_folder)
-        area_flowacc_30min = r"{}orgDDM30area.tif".format(setup_folder)
-        globallakes_fraction_15s = r'{}pixareafraction_glolakres_15s.tif'.format(setup_folder)
+    def __init__(self, setup_folder, outputdir, tmpdir, continentlist, process_stations=True,
+                 overwrite=False):
+        flowdir_gdbpath = os.path.join(setup_folder, 'flow_dir_15s_by_continent.gdb')
+        pixarea_path = os.path.join(setup_folder, 'pixel_area_skm_15s.gdb\px_area_skm_15s')
+        flowdir_30min = os.path.join(setup_folder, 'flowdir_30min.tif')
+        area_flowacc_30min = os.path.join(setup_folder, 'orgDDM30area.tif')
+        globallakes_fraction_15s = os.path.join(setup_folder, 'pixareafraction_glolakres_15s.tif')
         landratio = r'landratio_correction.tif'
-        stations = r'{}stations_europe.geojson'.format(setup_folder)
+        stations = os.path.join(setup_folder, 'stations_europe.geojson')
 
         flowdir_path = os.path.join(outputdir,
                                     '{}_dir_15s.tif'.format(''.join(x for x in continentlist)))
@@ -60,30 +61,45 @@ class PreProcessing:
         upa_path = os.path.join(outputdir,
                                     '{}_upa_15s.tif'.format(''.join(x for x in continentlist)))
 
+        #Make sure that outputdir and tmpdir exist
+        if not os.path.exists(outputdir):
+            print("{} does not exists. Creating it...".format(outputdir))
+            os.mkdir(outputdir)
+            
+        if not os.path.exists(tmpdir):
+            print("{} does not exists. Creating it...".format(tmpdir))
+            os.mkdir(tmpdir)
+
         # Standard mosaic flow dir rasters
-        combine_flow_direction_raster(flowdir_gdbpath, continentlist, outputdir)
+        combine_flow_direction_raster(hydrosheds_flowdirgdb_path=flowdir_gdbpath, 
+                                      continentlist=continentlist, 
+                                      outputdir=outputdir,
+                                      overwrite=overwrite)
 
         # Standard flow acc -> upa_path
         flow_accumulation(in_flowdir_path=flowdir_path,
-                          in_pixarea_path=pixelarea_path,
+                          in_pixarea_path=pixarea_path,
                           out_flowacc_path=flowacc_path,
-                          out_upa_path=upa_path
+                          out_upa_path=upa_path,
+                          overwrite=overwrite
                           )
 
         # Prepare shifting of correction terms to downstream HR grid cells
         # and correction for differing characteristics of the river networks in rivers with large catchments
         calc_shift_keep_largerivers_mask_grids(upa_path, flowdir_30min, area_flowacc_30min,
-                                               tmpdir, outputdir, continentlist)
+                                               tmpdir, outputdir, continentlist, overwrite)
 
         # compute HR pourpoints of LR cells and clip HR pixel area and HR global lake fractions to
         # union of continents in continentlist
-        get_continental_hsgrids(continentlist, upa_path, pixelarea_path, globallakes_fraction_15s, outputdir)
+        get_continental_hsgrids(continentlist, upa_path, pixarea_path, globallakes_fraction_15s, outputdir,
+                                overwrite)
 
         #Copy 'landratio_correction.tif' to setup folder
         copygrids([landratio], setup_folder, outputdir)
 
         #Get cell position (row and column indices) of stations in HR flow accumulation raster
-        create_stationrastermapping(flowacc_path, stations, outputdir)
+        if process_stations:
+            create_stationrastermapping(flowacc_path, stations, outputdir)
 
 
 if __name__ == '__main__':
@@ -100,6 +116,9 @@ if __name__ == '__main__':
 
     outputdir = os.path.join(datdir, "hs_reproduced")
     tmpdir = os.path.join(datdir, "hs_reproduced", "tmp")
-    continentlist = ['eu', 'as', 'si']
+    continentlist = ['eu']
+    overwrite = False
+    process_stations = False
 
-    PreProcessing(setup_folder, outputdir, tmpdir, continentlist)
+    PreProcessing(setup_folder=setup_folder, outputdir=outputdir, tmpdir=tmpdir, continentlist=continentlist,
+                  process_stations=process_stations, overwrite=overwrite)
