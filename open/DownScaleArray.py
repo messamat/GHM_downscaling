@@ -29,13 +29,13 @@ class DownScaleArray:
 
     status : None or str
          initialized with None. Later holds information on resolution and name of the
-         downscaled array in following manner *'resolution_name'* e.g. *'15sec_dis'*
+         downscaled array in following manner *'resolution_name'* e.g. *'15s_dis'*
     data : None or numpy.array
          initialized with None. Later holds data as numpy.array
     write_raster_specs : dict
         dict containing information on how big is the conversion factor for one
         axis from one degree to the specified resolution (currently implemented:
-        30min, 6min, 30sec, 15sec)
+        30min, 6min, 30sec, 15s)
     """
     def __init__(self, config, aoi, **kwargs):
         self.status = None
@@ -55,7 +55,7 @@ class DownScaleArray:
             '30min': 2,
             '6min': 10,
             '30sec': 120,
-            '15sec': 240
+            '15s': 240
         }
 
         if 'write_raster_trigger' in kwargs:

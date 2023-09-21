@@ -173,7 +173,7 @@ class DryverDownscaling:
         #
         print('timestep {} {} started'.format(month, year))
         if self.dconfig.runoff_src == 'cellrunoff':
-            cellrunoff = self.taskdata['cellrunoff_series'].dropna()
+            cellrunoff = self.taskdata['netdis_30min_series'].dropna()
 
             #Convert cell runoff from km3/yr to m3/s
             cellrunoff_m3s = (self.get_30min_array(cellrunoff, np.nan) / (self.daysinmonth_dict[month]
@@ -210,56 +210,67 @@ class DryverDownscaling:
             reliable_surfacerunoff_ar = self.get_30min_array(sr, np.nan)
         del sr
 
-        cellrunoff_series = self.taskdata['cellrunoff_series']
-        cellrunoff_series.name = 'variable'
+        netdis_30min_series = self.taskdata['netdis_30min_series']
+        netdis_30min_series.name = 'variable'
         dis = self.taskdata['dis']
         dis.name = 'variable'
         
-        #--------- Initial 15-sec runoff-based discharge ---------------------------------------------------------------
+        #--------- Compute initial 15-sec runoff-based cell discharge -------------------------------------------------------
         # if sr.smoothing == True: remove outliers
         # inverse distance interpolation from lr to intermediate resolution of 0.1 degree
         # if sr.smoothing == True: perform 5x5 mean filtering on 6 min raster (excluding NAs)
-        # disaggregation the intermediate resolution is disaggregated to 15 arc seconds
+        # disaggregate the 6 min raster to 15 arc seconds
         # mask with HydroSHEDS reference layer (remove 15-sec cells where original HydroSHEDS pixel area raster is NoData)
         # compute runoff-based discharge
         # correct runoff-based discharge for changes in storage of global lakes and reservoirs
-        (dis_fg_conv) = self.get_runoff_based_dis(reliable_surfacerunoff_ar, month=month, yr=year)
+        # -> yields a 15 sec array of runoff-based discharge (in m3/s) generated in each cell (i.e., non-accumulated)
+        (runoffbased_celldis_15s_ar) = self.get_runoff_based_celldis(reliable_surfacerunoff_ar, month=month, yr=year)
         
-        #If not implementing further discharge correction, return discharge
+        #If not implementing further discharge correction, return this flow-accumulated runoff-based cell discharge  ---
         if not self.dconfig.dis_corr:
-            return self.flow_acc(dis_fg_conv)
+            return self.flow_acc(runoffbased_celldis_15s_ar)
         del reliable_surfacerunoff_ar
         
-        # step8
-        correction_grid = self.calculate_lr_correctionvalues(dis_fg_conv, cellrunoff_series,
-                                                             month=month, yr=year)
-        del cellrunoff_series
-        if 'corrweightfactor' in self.dconfig.kwargs:
-            correction_weights = self.get_corrweight(dis_fg_conv, self.dconfig.kwargs['corrweightfactor'])
-        else:
-            correction_weights = self.get_corrweight(dis_fg_conv)
+        #Compute correction values to route downstream -----------------------------------------------------------------
+        #the sum of disaggregated runoff-based discharge from all HR cells within each LR cell is compared to the net
+        # discharge which is generated in this LR cell (this serves to account for additional information from the
+        # routing routine of the LR GHM, in particular about the impact of surface water bodies and human water use on
+        # streamflow).
+        correction_grid_30min = self.calculate_lr_correctionvalues(runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
+                                                                   netdis_30min_series=netdis_30min_series,
+                                                                   month=month, yr=year)
+        del netdis_30min_series
 
+        #Compute what proportion of the 30-min correction value should apply to each 15-sec cell
+        if 'corrweightfactor' in self.dconfig.kwargs:
+            correction_weights_15s = self.get_corrweight(runoffbased_celldis_15s_ar, self.dconfig.kwargs['corrweightfactor'])
+        else:
+            correction_weights_15s = self.get_corrweight(runoffbased_celldis_15s_ar)
+
+        # Apply an even greater proportion of the correction on larger rivers (if large_river_corr is True)
         if self.dconfig.large_river_corr:
-            corrected_dis = self.calc_corrected_dis(correction_grid=correction_grid,
-                                                    correction_weights=correction_weights,
-                                                    converted_runoff=dis_fg_conv,
+            corrected_dis = self.calc_corrected_dis(correction_grid_30min=correction_grid_30min,
+                                                    correction_weights_15s=correction_weights_15s,
+                                                    runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
                                                     month=month)
             dis = self.taskdata['dis']
             dis.name = 'variable'
-            correction_grid = self.get_lrc_correction_grid(dis,
-                                                           correction_grid=correction_grid,
+            correction_grid_30min = self.get_lrc_correction_grid(dis,
+                                                           correction_grid_30min=correction_grid_30min,
                                                            corrected_dis=corrected_dis,
                                                            month=month)
             del corrected_dis
 
         if self.dconfig.corr_grid_shift:
-            correction_grid = self.shift_correction_grid(correction_grid)
+            correction_grid_30min = self.shift_correction_grid(correction_grid_30min)
         if self.dconfig.coor_grid_smoothing:
-            correction_grid = self.smooth_correction_grid(correction_grid)
-        corrected_dis = self.calc_corrected_dis(correction_grid=correction_grid,
-                                                correction_weights=correction_weights,
-                                                converted_runoff=dis_fg_conv,
-                                                threshold=self.dconfig.threshold,
+            correction_grid_30min = self.smooth_correction_grid(correction_grid_30min)
+            
+        # Apply correction and accumulate discharge
+        corrected_dis = self.calc_corrected_dis(correction_grid_30min=correction_grid_30min,
+                                                correction_weights_15s=correction_weights_15s,
+                                                runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
+                                                correction_threshold=self.dconfig.correction_threshold,
                                                 month=month)
         return corrected_dis
 
@@ -275,19 +286,23 @@ class DryverDownscaling:
         month = self.taskdata['month']
         year = self.taskdata['year']
         result = self.run_ts(month, year)
+
         if isinstance(self.dconfig.pois, pd.DataFrame):
+            # Get downscaled discharge time value for points of interest
             ts_values = []
             for indexp, prow in self.dconfig.pois.iterrows():
                 ts_values.append(result[prow['row'], prow['col']])
         else:
             ts_values = []
 
+        # Write downscaled discharge to disk
         if self.dconfig.write_result == 'raster':
             DownScaleArray(self.dconfig,
                            self.dconfig.aoi,
                            write_raster_trigger=True).load_data(result.astype(np.float32),
-                                                                '15sec_dis_{}_{:02d}'.format(year, month))
-        elif self.dconfig.write_result == 'nc':
+                                                                '15s_dis_{}_{:02d}'.format(year, month))
+
+        elif self.dconfig.write_result == 'nc': #netCDF
             gt = self.staticdata['hydrosheds_geotrans']
             lon = [gt[0] + gt[1] * x for x in range(result.shape[1])]
             lat = [gt[3] - gt[1] * x for x in range(result.shape[0])]
@@ -309,7 +324,7 @@ class DryverDownscaling:
             ds.to_netcdf(
                 os.path.join(
                     self.dconfig.temp_dir,
-                    '/15sec_dis_{}_{:02d}.nc4'.format(month, year)
+                    '/15s_dis_{}_{:02d}.nc4'.format(month, year)
                 ),
                 encoding={'dis': {'zlib': True, 'complevel': 9,
                                   'dtype': 'float32'}},
@@ -321,7 +336,7 @@ class DryverDownscaling:
         # self.wg.aoi = self.kwargs['area_of_interest']
         return month - 1 + (year - self.dconfig.startyear) * 12, ts_values
 
-    def get_runoff_based_dis(self, reliable_surfacerunoff_ar, 
+    def get_runoff_based_celldis(self, reliable_surfacerunoff_ar,
                              **kwargs):
         """
 
@@ -332,7 +347,7 @@ class DryverDownscaling:
         kwargs: dict
             keyword arguments which are handed over to convert runoff to dis
 
-        Previously two other arguments: lr_dis_series, cellrunoff_series
+        Previously two other arguments: lr_dis_series, netdis_30min_series
         But these arguments were not used in the end
         
         Returns
@@ -361,7 +376,6 @@ class DryverDownscaling:
         interpolated_smooth_15s = self.disaggregate(tmp_smooth, 24)
         del tmp_interp
 
-
         if self.dconfig.l12harm:
             # Correct for l12 catchment — not implemented
             masked_diss_tmp_smooth = self.harmonize_l12_hydrosheds(interpolated_smooth_15s)
@@ -370,7 +384,7 @@ class DryverDownscaling:
             masked_diss_tmp_smooth = self.mask_wg_with_hydrosheds(interpolated_smooth_15s)
         del interpolated_smooth_15s
 
-        #Compute runoff-based discharge (from mm to m3/s)
+        #Compute runoff-based discharge in the cell (i.e. convert runoff from mm to m3/s)
         conv = self.convert_runoff_to_dis(masked_diss_tmp_smooth, **kwargs)
 
         #Correct runoff-based discharge for changes in storage of global lakes and reservoirs
@@ -380,7 +394,7 @@ class DryverDownscaling:
             globallakes_fraction_15s = self.staticdata['globallakes_fraction_15s']
 
             #Disaggregate global lakes redistribution values from 30 min pd.Series in km3/y to 15 arc arrays in m3/s
-            globallakes_addition_ar_15sec_m3s = self.disaggregate_ar(
+            globallakes_addition_ar_15s_m3s = self.disaggregate_ar(
                 self.get_30min_array(
                     self.taskdata['globallakes_addition']
                     / (self.daysinmonth_dict[kwargs['month']] * 24 * 60 * 60) * 1000000000,
@@ -388,7 +402,7 @@ class DryverDownscaling:
                 factor=120)
 
             #Redistribute storage change based on fraction of lakes in LR cell intersecting with HR cell
-            conv = conv - (globallakes_fraction_15s * globallakes_addition_ar_15sec_m3s)
+            conv = conv - (globallakes_fraction_15s * globallakes_addition_ar_15s_m3s)
 
             #Convert negative runoff-based discharge values to 0
             with warnings.catch_warnings():
@@ -415,7 +429,6 @@ class DryverDownscaling:
 
         """
 
-        # STEP4a
         mean_land_fraction = self.staticdata['mean_land_fraction']
         # Identify and remove grid cells with less than 5% land area
         not_reliable_arcids = mean_land_fraction[mean_land_fraction <= 0.5].index
@@ -563,7 +576,7 @@ class DryverDownscaling:
         Parameters
         ----------
         ds: data points
-        resolution: desired resolution, accepts "6min", "30min", and "15sec"
+        resolution: desired resolution, accepts "6min", "30min", and "15s"
         kwargs: can provide "alg" argument to gdal.GridOptions
 
         Returns
@@ -580,7 +593,7 @@ class DryverDownscaling:
         elif resolution == '30min':
             width = (aoi[0][1] - aoi[0][0]) * 2
             height = (aoi[1][1] - aoi[1][0]) * 2
-        elif resolution == '15sec':
+        elif resolution == '15s':
             width = (aoi[0][1] - aoi[0][0]) * 60 * 4
             height = (aoi[1][1] - aoi[1][0]) * 60 * 4
         else:
@@ -614,12 +627,12 @@ class DryverDownscaling:
         """
         Mask disaggregated a DownScaleArray with a Hydrosheds raster file like flow directions.
 
-        This process masks the 15sec from WaterGAP originating data (DownScaleArray) with Hydrosheds data. They must not
+        This process masks the 15s from WaterGAP originating data (DownScaleArray) with Hydrosheds data. They must not
         be the same size but DownScaleArray must be at least the size of Hydrosheds array resp. raster. The
         DownScaleArray is then clipped to Hydrosheds array and grid cells which are nan in Hydrosheds array are set nan
         in DownScaleArray.
 
-        :param wg: DownScale Array with 15sec data originating from WaterGAP data
+        :param wg: DownScale Array with 15s data originating from WaterGAP data
         :type wg: DownScaleArray
         :return: masked and clipped DownScaleArray
         :rtype: np.array
@@ -654,26 +667,52 @@ class DryverDownscaling:
         return newflat.reshape(ar.shape)
 
     def flow_acc(self, dis15s):
+        #Get/run flow accumulation
         newar = self.staticdata['flowacc'].get(dis15s)
         newar[np.isnan(self.staticdata['pixelarea'])] = np.nan
         return newar
 
-    def calculate_lr_correctionvalues(self, dis_fg_conv, cellrunoff_series, **kwargs):
-        # step 8a
-        # reaggregation of step5disconv
-        dis_pix_30min = self.aggsum(dis_fg_conv, 120, zeroremove=False)
+    def calculate_lr_correctionvalues(self, runoffbased_celldis_15s_ar, netdis_30min_series, **kwargs):
+        """
+        Compute correction values to route downstream
+        The sum of disaggregated runoff-based discharge from all HR cells within each LR cell is compared to the net
+        discharge which is generated in this LR cell (this serves to account for additional information from the
+        routing routine of the LR GHM, in particular about the impact of surface water bodies and human water use on
+        streamflow).
+
+        Parameters
+        ----------
+        runoffbased_celldis_15s_ar
+        netdis_30min_series
+        kwargs
+
+        Returns
+        -------
+
+        """
+
+        # aggregate-sum 15-sec runoff-based cell discharge to 30-min runoff-based cell discharge (m3/s)
+        runoffbased_celldis_30min_ar = self.aggsum(runoffbased_celldis_15s_ar, 120, zeroremove=False)
+        
+        #Convert 30-min net runoff to m3/s (from in km3/month if self.dconfig.mode == 'ts', else from km3/yr)
         if self.dconfig.mode == 'ts':
-            cellrunoff_m3s = (self.get_30min_array(cellrunoff_series, np.nan) / (self.daysinmonth_dict[kwargs['month']]
-                                                                                 * 24 * 60 * 60) * 1000000000)
+            netdis_30min_m3s_ar = (self.get_30min_array(netdis_30min_series, np.nan)
+                              / (self.daysinmonth_dict[kwargs['month']] * 24 * 60 * 60) * 1000000000)
         else:
-            cellrunoff_m3s = self.get_30min_array(cellrunoff_series, np.nan) / (365 * 24 * 60 * 60) * 1000000000
+            netdis_30min_m3s_ar = self.get_30min_array(netdis_30min_series, np.nan) / (365 * 24 * 60 * 60) * 1000000000
+
+        #Control for proportion of actual land (vs sea) in 30-min cell
         landratio_corr = self.staticdata['landratio_corr']
-        cellrunoff_m3s *= landratio_corr
-        cellrunoff_m3s = self.stack(upper=cellrunoff_m3s, lower=dis_pix_30min)
-        dif_dis_30min = cellrunoff_m3s - dis_pix_30min
+        netdis_30min_m3s_ar *= landratio_corr
+
+        #Fill NAs in net runoff array with values from aggregated runoff-based cell discharge
+        netdis_30min_m3s_ar = self.stack(upper=netdis_30min_m3s_ar, lower=runoffbased_celldis_30min_ar)
+
+        #Compute correction value stemming from each cell (to be routed downstream)
+        dif_dis_30min = netdis_30min_m3s_ar - runoffbased_celldis_30min_ar
         return dif_dis_30min
 
-    def get_corrweight(self, converted_runoff, weightingfactor=1):
+    def get_corrweight(self, runoffbased_celldis_15s_ar, weightingfactor=1):
         """
         The correction weights are calculated based on discharge calculated with raw runoff with a weighting factor.
 
@@ -694,38 +733,51 @@ class DryverDownscaling:
             hr grid with correction weights, per lr grid cell sum up to one
 
         """
-        # Step 8b
+        #Compute actual flow-accumulated discharge
+        runoffbased_dis_15s = self.flow_acc(runoffbased_celldis_15s_ar)
 
-        runoffbaseddis = self.flow_acc(converted_runoff)
-        dis_fg_sum_30min = self.aggsum(runoffbaseddis, 120, zeroremove=False)
+        #Compute sum of discharge from all HR cells in each LR cell
+        dis_fg_sum_30min = self.aggsum(runoffbased_dis_15s, 120, zeroremove=False)
+
+        # Replace 0s with 1 to avoid dividing by 0, but won't influence outcome (dividing 0 by 1)
         dis_fg_sum_30min[dis_fg_sum_30min == 0] = 1
-        dis_corr_weight = runoffbaseddis / self.disaggregate_ar(dis_fg_sum_30min, 120)
+
+        # Compute proportion of discharge from LR cell contained in each HR cell
+        dis_corr_weight = runoffbased_dis_15s / self.disaggregate_ar(dis_fg_sum_30min, 120)
+
+        # To assign even more weight to cells with higher discharge.
+        # Multiply the correction weight (above what it would be if discharge was evenly distributed) by a factor
         if weightingfactor != 1:
-            dis_corr_weight = ((dis_corr_weight - (1 / (120 * 120))) * weightingfactor) + (1 / (120 * 120))
+            #Compute
+            dis_corr_weight = (
+                    ((dis_corr_weight - (1/(120*120)))
+                     * weightingfactor)
+                    + (1/(120*120))
+            )
         return dis_corr_weight
 
-    def calc_corrected_dis(self, correction_grid, correction_weights, converted_runoff,
-                           threshold=0.001, **kwargs):
+    def calc_corrected_dis(self, correction_grid_30min, correction_weights_15s, runoffbased_celldis_15s_ar,
+                           correction_threshold=0.001, **kwargs):
         """
         Based on the raw discharge calculated with disaggregated runoff, a lr correction grid and correction weights
         the downscaled discharge is calculated.
 
-        The correction grid is disaggregated to hr and multiplied with correction weights. Then the threshold value is
-        applied if parameter apply_thresh == True. This threshold is a multiplicator for upstreamarea, which is then
-        used as maximum correction value in positive or negative direction. Then the weighted and optional limited
-        correction values are then applied on the raw discharge calculated with disaggregated runoff. To avoid
+        The correction grid is disaggregated to hr and multiplied with correction weights. Then the correction_threshold value is
+        applied if parameter apply_thresh == True. This correction_threshold is a multiplicator for upstream area (i.e., m3/s/km2),
+        which is then used as maximum correction value in positive or negative direction. Then the weighted and optional
+        limited correction values are applied on the raw discharge calculated with disaggregated runoff. To avoid
         implausible artifacts of the correction. Negative discharge values are set to zero.
 
         Parameters
         ----------
-        correction_grid: np.array
+        correction_grid_30min: np.array
             lr grid with correction values
-        correction_weights: np.array
+        correction_weights_15s: np.array
             hr grid with weights for the lr correction values
-        converted_runoff: np.array
-            grid with converted_runoff
-        threshold: float or None
-            multiplicator for upstream area to limit hr correction values, None if no threshold should be applied
+        runoffbased_celldis_15s_ar: np.array
+            grid with runoffbased_celldis_15s_ar
+        correction_threshold: float or None
+            multiplicator for upstream area to limit hr correction values, None if no correction_threshold should be applied
 
         Returns
         -------
@@ -733,27 +785,36 @@ class DryverDownscaling:
             hr grid with corrected discharge
 
         """
-        dis_pix_corr_15s = self.disaggregate_ar(correction_grid.data, 120) * correction_weights.data
+        #Apply correction weights to correction grid
+        celldis_correctionvalue_15s = self.disaggregate_ar(correction_grid_30min.data, 120) * correction_weights_15s.data
 
-        if threshold is not None:
-            ctar = self.staticdata['upstream_pixelarea'] * threshold
+        if correction_threshold is not None:
+            ctar = self.staticdata['upstream_pixelarea'] * correction_threshold
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
-                negative_corr = np.where(dis_pix_corr_15s < 0, -1, 1)
-            dis_pix_corr_15s = np.minimum(np.abs(dis_pix_corr_15s), ctar)
-            dis_pix_corr_15s = dis_pix_corr_15s * negative_corr
+                # Create a grid to know which cells have negative correction
+                corr_sign = np.where(celldis_correctionvalue_15s < 0, -1, 1)
+            # Make sure the absolute value of the correction weights remain under the correction_threshold
+            celldis_correctionvalue_15s = np.minimum(np.abs(celldis_correctionvalue_15s), ctar) 
+            #Re-assign correct sign to each correction weight
+            celldis_correctionvalue_15s = celldis_correctionvalue_15s * corr_sign
             del negative_corr
+        
+        #Apply correction values to flow-accumulated runoff-based discharge
+        corrected_celldis = runoffbased_celldis_15s_ar + celldis_correctionvalue_15s
+        
+        #Accumulate corrected cell discharge to yield actual dischare
+        corrected_dis = self.flow_acc(corrected_celldis)
 
-        cor_dis = converted_runoff + dis_pix_corr_15s
-
-        corrected_dis = self.flow_acc(cor_dis)
         # manual correction of negative discharge
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore')
             corrected_dis[corrected_dis < 0] = 0
+            
         return corrected_dis
 
-    def get_lrc_correction_grid(self, dis, corrected_dis, correction_grid, **kwargs):
+    ######### TO CHECK AND COMMENT #####################
+    def get_lrc_correction_grid(self, dis, corrected_dis, correction_grid_30min, **kwargs):
         """
         This method adapts the correction grid to account for differences in river networks (i.e. missing endorheic
         sinks). This adaption is only done in large rivers ( geq 50000 km2)
@@ -762,7 +823,7 @@ class DryverDownscaling:
         ----------
         dis
         corrected_dis
-        correction_grid
+        correction_grid_30min
         kwargs
 
         Returns
@@ -798,22 +859,22 @@ class DryverDownscaling:
         fa = self.staticdata['30mingap_flowacc']
         transfer_accu_grid = FlowAccTT(transfer_ddm_grid, fa, True).get(transfer_value_grid,
                                                                         no_negative_accumulation=False)
-        new_diff_dis_30min = correction_grid + ((cell_dis_contribution_dif + transfer_accu_grid)
+        new_diff_dis_30min = correction_grid_30min + ((cell_dis_contribution_dif + transfer_accu_grid)
                                                 * lrivermask)
 
         return new_diff_dis_30min
 
-    def shift_correction_grid(self, correction_grid):
+    def shift_correction_grid(self, correction_grid_30min):
         flowdir30min = self.get_30min_array('flowdir')
-        corr_grid = ((correction_grid * self.staticdata['keepgrid'])
-                     + get_inflow_sum(in_valuegrid=(correction_grid * self.staticdata['shiftgrid']),
+        corr_grid = ((correction_grid_30min * self.staticdata['keepgrid'])
+                     + get_inflow_sum(in_valuegrid=(correction_grid_30min * self.staticdata['shiftgrid']),
                                       in_flowgrid=flowdir30min)
                      )
         return corr_grid
 
-    def smooth_correction_grid(self, correction_grid):
+    def smooth_correction_grid(self, correction_grid_30min):
         flowdir30min = self.get_30min_array('flowdir')
-        corr_grid = correction_grid
+        corr_grid = correction_grid_30min
         for i in range(10):
             down_corr_grid = get_downstream_grid(in_valuegrid=corr_grid, in_flowdir=flowdir30min, out_grid=None)
             min_diff_grid = np.min([np.abs(corr_grid), np.abs(down_corr_grid)],

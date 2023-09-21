@@ -46,9 +46,9 @@ class DryverDownscalingWrapper:
         Initialized with None. Holds in downscaling the surface runoff based discharge
     corrected_dis : None or DownScaleArray
         Initialized with None. Holds in downscaling corrected discharge
-    correction_weights : None or DownScaleArray
+    correction_weights_15s : None or DownScaleArray
         Initialized with None. Holds spatial distribution of correction weights (on 15 arcsec)
-    correction_grid : None or DownScaleArray
+    correction_grid_30min : None or DownScaleArray
         Initialized with None. Holds correction values with are redistributed (dataset on 30 arcmin)
 
     """
@@ -79,8 +79,8 @@ class DryverDownscalingWrapper:
         self.temp_downscalearray = DownScaleArray(config, self.dconfig.aoi, **kwargs)
         self.surfacerunoff_based_dis = None
         self.corrected_dis = None
-        self.correction_weights = None
-        self.correction_grid = None
+        self.correction_weights_15s = None
+        self.correction_grid_30min = None
 
     def prepare(self, staticdata=True, data=True, config=True):
         if self.dconfig.mode == 'ts':
@@ -119,7 +119,7 @@ class DryverDownscalingWrapper:
                                                                                  'month',
                                                                                  'year'])['variable'].loc[
                                 slice(None), mon, yr],
-                            'cellrunoff_series': self.wg.cell_runoff.set_index(['arcid',
+                            'netdis_30min_series': self.wg.cell_runoff.set_index(['arcid',
                                                                                'month',
                                                                                'year'])['net_cell_runoff'].loc[
                                 slice(None),
