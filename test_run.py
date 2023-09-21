@@ -15,7 +15,7 @@ localdir = os.path.join(rootdir, 'results', 'downscaling_output')
 if not os.path.exists(localdir):
     os.mkdir(localdir)
 
-continentlist = ['rhone']  # ['eu', 'as', 'si']
+continentlist = ['eu']  # ['eu', 'as', 'si']
 continent = ''.join(continentlist)
 wginpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data',
                         'wghm22e_v001', 'input')  # '/home/home1/gm/datasets/input_routing/wghm22e_v001/input/'

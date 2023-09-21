@@ -29,7 +29,8 @@ def main(rtype, rootdir):
     wginpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data',
                             'wghm22e_v001', 'input') #'/home/home1/gm/datasets/input_routing/wghm22e_v001/input/'
     wgpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data', '22eant') #'/home/home8/dryver/22eant/'
-    setup_folder = os.path.join(rootdir, 'data', 'setupdata_for_downscaling') #'/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
+    hydrosheds_folder = os.path.join(rootdir, 'data', 'hs_reproduced') #'/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
+    setup_folder = os.path.join(rootdir, 'data', 'setupdata_for_downscaling')
     stations_path = os.path.join(setup_folder, 'stations.csv')
     constants_folder = os.path.join(rootdir, 'src', 'DRYVER-main', 'constants')
     pois = pd.read_csv(stations_path) #points of interest
@@ -41,7 +42,7 @@ def main(rtype, rootdir):
 
     dconfig = DownscalingConfig(wg_in_path=wginpath,
                                 wg_out_path=wgpath,
-                                hydrosheds_path=setup_folder,
+                                hydrosheds_path=hydrosheds_folder,
                                 startyear=1901,
                                 endyear=2019,
                                 temp_dir=localdir,
