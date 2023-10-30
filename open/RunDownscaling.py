@@ -24,7 +24,7 @@ def main(rtype, rootdir):
     -------
 
     """
-    continentlist = ['rhone']#['eu', 'as', 'si']
+    continentlist = ['eu']#['eu', 'as', 'si']
     continent = ''.join(continentlist)
     wginpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data',
                             'wghm22e_v001', 'input') #'/home/home1/gm/datasets/input_routing/wghm22e_v001/input/'

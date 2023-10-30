@@ -1,4 +1,4 @@
-#RunDownscaling.py #####################################################################################################
+#1. RunDownscaling.py #####################################################################################################
 
 import os
 from inspect import getsourcefile
@@ -35,7 +35,7 @@ if continent == 'rhone':
 dconfig = DownscalingConfig(wg_in_path=wginpath,
                             wg_out_path=wgpath,
                             hydrosheds_path=hydrosheds_folder,
-                            startyear=1901,
+                            startyear=2018,
                             endyear=2019,
                             temp_dir=localdir,
                             write_raster=False,
@@ -57,7 +57,7 @@ dconfig = DownscalingConfig(wg_in_path=wginpath,
                             # corrweightfactor=0.1
                             )
 
-#DryverDownscalingWrapper ##############################################################################################
+##1.1.DryverDownscalingWrapper ##############################################################################################
 import pickle
 import glob
 from multiprocessing import Pool
@@ -77,7 +77,7 @@ from open.DryverDownscaling import run_task
 config=dconfig #################### ADDED
 kwargs = dict()
 
-#--------------------------- Run class definition: down = DryverDownscalingWrapper(dconfig) ---------------------------------------------------------------------
+#1.1.2.--------------------------- Run class definition: down = DryverDownscalingWrapper(dconfig) ---------------------------------------------------------------------
 with open(os.path.join(config.temp_dir, 'run_information.txt'), 'w') as f:
     temp = vars(config)
     for item in temp:
@@ -96,7 +96,7 @@ if dconfig.mode == 'longterm_avg':
     wg.get_longterm_avg_version()
     wg.longterm_avg_converted = True
 daysinmonth_dict = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
-                        7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
+                    7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
 
 temp_downscalearray = DownScaleArray(config, dconfig.aoi, **kwargs)
 surfacerunoff_based_dis = None
@@ -104,23 +104,23 @@ corrected_dis = None
 correction_weights_15s = None
 correction_grid_30min = None
 
-#--------------------------- Run down.prepare() ---------------------------------------------------------------------
+#1.1.3.--------------------------- Run down.prepare() ---------------------------------------------------------------------
 staticdata = {
-            'mean_land_fraction': wg.land_fractions.data.reset_index().groupby('arcid')['landareafr'].mean(),
-            'wg_input': wg.wg_input.data,
-            'coords': wg.coords,
-            'flowacc': hydrosheds.flowacc,
-            'landratio_corr': hydrosheds.get_wg_corresponding_grid(wg.landratio_corr_path),
-            'largerivers_mask': hydrosheds.largerivers_mask(),
-            'cell_pourpixel': hydrosheds.get_cell_pourpixel(),
-            '30mingap_flowacc': hydrosheds.get_wg_corresponding_grid(wg.gap_flowacc_path),
-            'keepgrid': hydrosheds.keepGrid.copy(),
-            'shiftgrid': hydrosheds.shiftGrid.copy(),
-            'upstream_pixelarea': hydrosheds.upa,
-            'hydrosheds_geotrans': hydrosheds.hydrosheds_geotrans,
-            'pixelarea': hydrosheds.pixarea,
-            'globallakes_fraction_15s': hydrosheds.globallakes_fraction_15s_ar
-        }
+    'mean_land_fraction': wg.land_fractions.data.reset_index().groupby('arcid')['landareafr'].mean(),
+    'wg_input': wg.wg_input.data,
+    'coords': wg.coords,
+    'flowacc': hydrosheds.flowacc,
+    'landratio_corr': hydrosheds.get_wg_corresponding_grid(wg.landratio_corr_path),
+    'largerivers_mask': hydrosheds.largerivers_mask(),
+    'cell_pourpixel': hydrosheds.get_cell_pourpixel(),
+    '30mingap_flowacc': hydrosheds.get_wg_corresponding_grid(wg.gap_flowacc_path),
+    'keepgrid': hydrosheds.keepGrid.copy(),
+    'shiftgrid': hydrosheds.shiftGrid.copy(),
+    'upstream_pixelarea': hydrosheds.upa,
+    'hydrosheds_geotrans': hydrosheds.hydrosheds_geotrans,
+    'pixelarea': hydrosheds.pixarea,
+    'globallakes_fraction_15s': hydrosheds.globallakes_fraction_15s_ar
+}
 
 with open(os.path.join(dconfig.temp_dir, 'staticdata.pickle'), 'wb') as f:
     pickle.dump(staticdata, f)
@@ -129,42 +129,69 @@ with open(os.path.join(dconfig.temp_dir, 'staticdata.pickle'), 'wb') as f:
 # Each of these time steps thus represent a discrete "task"
 tasklist = []
 for yr in range(dconfig.startyear, dconfig.endyear + 1):
-        for mon in range(1, 13):
-            data = {
-                'sr': wg.surface_runoff_land_mm.data.set_index(['arcid',
-                                                                     'month',
-                                                                     'year'])['variable'].loc[
-                    slice(None), mon, yr],
-                'netdis_30min_series': wg.cell_runoff.set_index(['arcid',
-                                                                      'month',
-                                                                      'year'])['net_cell_runoff'].loc[
-                    slice(None),
-                    mon, yr],
-                'dis': wg.dis.data.set_index(['arcid', 'month', 'year'])['dis'].loc[
-                    slice(None), mon, yr],
-                'gwrunoff': wg.gw_runoff.data.set_index(['arcid', 'month', 'year'])['variable'].loc[
-                    slice(None), mon, yr],
-                'month': mon,
-                'year': yr,
-                'totalrunoff': wg.total_runoff.data.set_index(['arcid',
-                                                                    'month',
-                                                                    'year'])['variable'].loc[
-                    slice(None), mon, yr],
-            }
-            if dconfig.correct_global_lakes:
-                data['globallakes_addition'] = wg.globallakes_addition.loc[slice(None), yr, mon]
-            tasklist.append(data)
+    for mon in range(1, 13):
+        data = {
+            'sr': wg.surface_runoff_land_mm.data.set_index(['arcid',
+                                                            'month',
+                                                            'year'])['variable'].loc[
+                slice(None), mon, yr],
+            'netdis_30min_series': wg.cell_runoff.set_index(['arcid',
+                                                             'month',
+                                                             'year'])['net_cell_runoff'].loc[
+                slice(None),
+                mon, yr],
+            'dis': wg.dis.data.set_index(['arcid', 'month', 'year'])['dis'].loc[
+                slice(None), mon, yr],
+            'gwrunoff': wg.gw_runoff.data.set_index(['arcid', 'month', 'year'])['variable'].loc[
+                slice(None), mon, yr],
+            'month': mon,
+            'year': yr,
+            'totalrunoff': wg.total_runoff.data.set_index(['arcid',
+                                                           'month',
+                                                           'year'])['variable'].loc[
+                slice(None), mon, yr],
+        }
+        if dconfig.correct_global_lakes:
+            data['globallakes_addition'] = wg.globallakes_addition.loc[slice(None), yr, mon]
+        tasklist.append(data)
 
     # Write list of tasks to pickl
-    for i, task in enumerate(tasklist, 1):
-        out_pickle = os.path.join(dconfig.temp_dir,
-                               'data_task{:03d}.pickle'.format(i)
-                                  )
-        with open(out_pickle, 'wb') as f:
-            pickle.dump(task, f)
+for i, task in enumerate(tasklist, 1):
+    out_pickle = os.path.join(dconfig.temp_dir,
+                              'data_task{:03d}.pickle'.format(i)
+                              )
+    with open(out_pickle, 'wb') as f:
+        pickle.dump(task, f)
 
 if config:
     dconfig.pickle()
 
 del hydrosheds
 del wg
+
+#1.1.4.--------------------------- Run run_prepared_downscaling(localdir, 1) -------------------------------------------
+from open.DryverDownscaling import *
+#1.1.4.1.--------------------------- Run run_task -------------------------------------------
+#run_task(task=, path=)
+task_pathlist = [task for task in glob.glob(os.path.join(dconfig.temp_dir, '*task*.pickle'))]
+task = task_pathlist[0]
+dd = DryverDownscaling(in_taskdata_dict_picklepath=task,
+                       in_staticdata_dict_picklepath=os.path.join(dconfig.temp_dir, 'staticdata.pickle'),
+                       in_config_dict_picklepath=os.path.join(dconfig.temp_dir, 'config.pickle')
+                       )
+dd.save_and_run_ts()
+
+#1.1.4.1.2--------------------------- Run save_and_run_ts() -------------------------------------------
+#return dd.save_and_run_ts()
+
+
+
+if isinstance(config.pois, pd.DataFrame):
+    poidf = pd.DataFrame([x[1] for x in poi_list],
+                         index=[x[0] for x in poi_list]).sort_index()
+    poidf.columns = config.pois['stationid'].to_list()
+    poidf.to_csv(os.path.join(config.temp_dir,
+                              '/selected_timeseries_data_{}_{}.csv'.format(config.startyear,
+                                                                           config.endyear)
+                              )
+                 )

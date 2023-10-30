@@ -174,7 +174,7 @@ def run_prepared_downscaling(path, number_of_worker=2):
         config = pickle.load(f)
     pool = Pool(processes=number_of_worker) #Sets up the pool of worker processes to which tasks can be offloaded
     run_tasks = partial(run_task, path=path) #Pass the "path" argument (because pool.map can only pass a single argument to a function)
-    poi_list = pool.map(run_tasks, [task for task in glob.glob('{}*task*.pickle'.format(path))]) #Iterate over time-steps-continents
+    poi_list = pool.map(run_tasks, [task for task in glob.glob('*task*.pickle', rootdir=path)]) #Iterate over time-steps-continents
 
     if isinstance(config.pois, pd.DataFrame):
         poidf = pd.DataFrame([x[1] for x in poi_list],

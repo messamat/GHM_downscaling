@@ -24,8 +24,8 @@ def jit_filter_function(filter_function):
     The point is to optimize the function with Numba, which generates optimized machine code from pure Python code.
     jit stands for 'just-in-time' compilation.
     Numba reads the Python bytecode for a decorated function and combines this with information about the types of the
-    input arguments to the function. It analyzes and optimizes your code, and finally uses the LLVM compiler library
-    to generate a machine code version of your function, tailored to your CPU capabilities. This compiled version is
+    input arguments to the function. It analyzes and optimizes the code, and finally uses a compiler library
+    to generate a machine code version of the function, tailored to the CPU capabilities. This compiled version is
     then used every time the function is called."""
 
     jitted_function = numba.jit(filter_function, nopython=True)
@@ -848,7 +848,7 @@ class DryverDownscaling:
         wgdis_largerivers_30min = wgdis_30min_m3s * largerivers_mask_30min
         net_wgdis_largerivers_30min = (wgdis_largerivers_30min
                                     - get_inflow_sum(in_valuegrid=wgdis_largerivers_30min,
-                                                     in_flowgrid=flowdir)
+                                                     in_flowdir=flowdir)
                                     )
         #Compute maximum 15 sec accumulated pre-corrected discharge in each large river 30 min cell
         cell_pourpixel = self.staticdata['cell_pourpixel']
@@ -859,7 +859,7 @@ class DryverDownscaling:
         #Compute net pre-corrected discharge in each large river 30 min cell
         net_precorrecteddis_largerivers_30min = (accumulated_precorrecteddis_30min_largerivers
                                            - get_inflow_sum(in_valuegrid=accumulated_precorrecteddis_30min_largerivers,
-                                                            in_flowgrid=flowdir)
+                                                            in_flowdir=flowdir)
                                            )
 
         #Compute difference in net discharge from WG and from the accumulated corrected discharge
@@ -892,7 +892,7 @@ class DryverDownscaling:
         flowdir30min = self.get_30min_array('flowdir')
         corr_grid = ((correction_grid_30min * self.staticdata['keepgrid'])
                      + get_inflow_sum(in_valuegrid=(correction_grid_30min * self.staticdata['shiftgrid']),
-                                      in_flowgrid=flowdir30min)
+                                      in_flowdir=flowdir30min)
                      )
         return corr_grid
 
