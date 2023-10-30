@@ -142,7 +142,10 @@ class DryverDownscalingWrapper:
 
                 #Write list of tasks to pickl
                 for i, task in enumerate(tasklist, 1):
-                    with open('{}data_task{:03d}.pickle'.format(self.dconfig.temp_dir, i), 'wb') as f:
+                    out_pickle = os.path.join(self.dconfig.temp_dir,
+                                              'data_task{:03d}.pickle'.format(i)
+                                              )
+                    with open(out_pickle, 'wb') as f:
                         pickle.dump(task, f)
 
             if config:

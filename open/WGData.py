@@ -93,7 +93,9 @@ class WGData:
 
         self.config = config
         self.longterm_avg_converted = False
-        self.gap_flowacc_path = '{}{}_gap_flowacc.tif'.format(self.config.hydrosheds_path, config.continent)
+        self.gap_flowacc_path = os.path.join(self.config.hydrosheds_path,
+                                             '{}_gap_flowacc.tif'.format(config.continent)
+                                             )
         self.landratio_corr_path = os.path.join(self.config.hydrosheds_path, 'landratio_correction.tif')
 
         #Prepare data for redistribution of volume changes of global lake and reservoir --------------------------------

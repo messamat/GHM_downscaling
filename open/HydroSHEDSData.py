@@ -97,8 +97,12 @@ class HydroSHEDSData:
         return globallakes_fraction_15s_ar
 
     def get_downstream_shift_grids(self):
-        shiftGrid = '{}{}_shiftgrid.tif'.format(self.config.hydrosheds_path, self.config.continent)
-        keepGrid = '{}{}_keepgrid.tif'.format(self.config.hydrosheds_path, self.config.continent)
+        shiftGrid = os.path.join(self.config.hydrosheds_path,
+                                 '{}_shiftgrid.tif'.format(self.config.continent)
+                                 )
+        keepGrid = os.path.join(self.config.hydrosheds_path,
+                                '{}_keepgrid.tif'.format(self.config.continent)
+                                )
         kg = self.get_wg_corresponding_grid(keepGrid)
         sg = self.get_wg_corresponding_grid(shiftGrid)
         return kg, sg
@@ -117,7 +121,9 @@ class HydroSHEDSData:
         return raar
 
     def largerivers_mask(self):
-        largerivers = '{}{}_largerivers_mask.tif'.format(self.config.hydrosheds_path, self.config.continent)
+        largerivers = os.path.join(self.config.hydrosheds_path,
+                                   '{}_largerivers_mask.tif'.format(self.config.continent)
+                                   )
         return self.get_wg_corresponding_grid(largerivers)
 
     @Timer(name='decorator', text='preparing the l12 harmonization took {seconds:.0f}s')
