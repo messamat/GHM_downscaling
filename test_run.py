@@ -20,8 +20,9 @@ continent = ''.join(continentlist)
 wginpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data',
                         'wghm22e_v001', 'input')  # '/home/home1/gm/datasets/input_routing/wghm22e_v001/input/'
 wgpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data', '22eant')  # '/home/home8/dryver/22eant/'
-setup_folder = os.path.join(rootdir, 'data',
-                            'setupdata_for_downscaling')  # '/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
+hydrosheds_folder = os.path.join(rootdir, 'data',
+                                 'hs_reproduced')  # '/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
+setup_folder = os.path.join(rootdir, 'data', 'setupdata_for_downscaling')
 stations_path = os.path.join(setup_folder, 'stations.csv')
 constants_folder = os.path.join(rootdir, 'src', 'DRYVER-main', 'constants')
 pois = pd.read_csv(stations_path)  # points of interest
@@ -33,7 +34,7 @@ if continent == 'rhone':
 
 dconfig = DownscalingConfig(wg_in_path=wginpath,
                             wg_out_path=wgpath,
-                            hydrosheds_path=setup_folder,
+                            hydrosheds_path=hydrosheds_folder,
                             startyear=1901,
                             endyear=2019,
                             temp_dir=localdir,
@@ -76,6 +77,7 @@ from open.DryverDownscaling import run_task
 config=dconfig #################### ADDED
 kwargs = dict()
 
+#--------------------------- Run class definition: down = DryverDownscalingWrapper(dconfig) ---------------------------------------------------------------------
 with open(os.path.join(config.temp_dir, 'run_information.txt'), 'w') as f:
     temp = vars(config)
     for item in temp:
@@ -86,7 +88,8 @@ dconfig = config
 kwargs.update(config.kwargs)
 kwargs = kwargs
 wg = WGData(config=dconfig, **kwargs) #Get WaterGAP object instance (data and tools related to WG)
-hydrosheds = HydroSHEDSData(dconfig, **kwargs) #Get WaterGAP object instance (data and tools related to HydroSHEDS)
+hydrosheds = HydroSHEDSData(dconfig, **kwargs) #Get HydroSHEDS object instance (data and tools related to HydroSHEDS)
+
 wg.calc_continentalarea_to_landarea_conversion_factor() #Compute conversion factor to concentrate runoff from continental area contained in WG pixels to actual land area
 wg.calc_surface_runoff_land_mm() #Apply conversion factor
 if dconfig.mode == 'longterm_avg':
@@ -101,3 +104,67 @@ corrected_dis = None
 correction_weights_15s = None
 correction_grid_30min = None
 
+#--------------------------- Run down.prepare() ---------------------------------------------------------------------
+staticdata = {
+            'mean_land_fraction': wg.land_fractions.data.reset_index().groupby('arcid')['landareafr'].mean(),
+            'wg_input': wg.wg_input.data,
+            'coords': wg.coords,
+            'flowacc': hydrosheds.flowacc,
+            'landratio_corr': hydrosheds.get_wg_corresponding_grid(wg.landratio_corr_path),
+            'largerivers_mask': hydrosheds.largerivers_mask(),
+            'cell_pourpixel': hydrosheds.get_cell_pourpixel(),
+            '30mingap_flowacc': hydrosheds.get_wg_corresponding_grid(wg.gap_flowacc_path),
+            'keepgrid': hydrosheds.keepGrid.copy(),
+            'shiftgrid': hydrosheds.shiftGrid.copy(),
+            'upstream_pixelarea': hydrosheds.upa,
+            'hydrosheds_geotrans': hydrosheds.hydrosheds_geotrans,
+            'pixelarea': hydrosheds.pixarea,
+            'globallakes_fraction_15s': hydrosheds.globallakes_fraction_15s_ar
+        }
+
+with open(os.path.join(dconfig.temp_dir, 'staticdata.pickle'), 'wb') as f:
+    pickle.dump(staticdata, f)
+
+# Create a list that holds, for each year-month the time-series data that are required to run the downscaling
+# Each of these time steps thus represent a discrete "task"
+tasklist = []
+for yr in range(dconfig.startyear, dconfig.endyear + 1):
+        for mon in range(1, 13):
+            data = {
+                'sr': wg.surface_runoff_land_mm.data.set_index(['arcid',
+                                                                     'month',
+                                                                     'year'])['variable'].loc[
+                    slice(None), mon, yr],
+                'netdis_30min_series': wg.cell_runoff.set_index(['arcid',
+                                                                      'month',
+                                                                      'year'])['net_cell_runoff'].loc[
+                    slice(None),
+                    mon, yr],
+                'dis': wg.dis.data.set_index(['arcid', 'month', 'year'])['dis'].loc[
+                    slice(None), mon, yr],
+                'gwrunoff': wg.gw_runoff.data.set_index(['arcid', 'month', 'year'])['variable'].loc[
+                    slice(None), mon, yr],
+                'month': mon,
+                'year': yr,
+                'totalrunoff': wg.total_runoff.data.set_index(['arcid',
+                                                                    'month',
+                                                                    'year'])['variable'].loc[
+                    slice(None), mon, yr],
+            }
+            if dconfig.correct_global_lakes:
+                data['globallakes_addition'] = wg.globallakes_addition.loc[slice(None), yr, mon]
+            tasklist.append(data)
+
+    # Write list of tasks to pickl
+    for i, task in enumerate(tasklist, 1):
+        out_pickle = os.path.join(dconfig.temp_dir,
+                               'data_task{:03d}.pickle'.format(i)
+                                  )
+        with open(out_pickle, 'wb') as f:
+            pickle.dump(task, f)
+
+if config:
+    dconfig.pickle()
+
+del hydrosheds
+del wg
