@@ -5,7 +5,9 @@ from simpleflowaccumulation import flow_accumulation
 from shiftgrids import calc_shift_keep_largerivers_mask_grids
 from additional_hsgrids import get_continental_hsgrids
 from copygrids import copygrids
-#from preprocessing.stationsrastermapping import create_stationrastermapping
+
+
+# from preprocessing.stationsrastermapping import create_stationrastermapping
 
 
 class PreProcessing:
@@ -44,6 +46,7 @@ class PreProcessing:
 
 
     """
+
     def __init__(self, setup_folder, outputdir, tmpdir, continentlist, process_stations=True,
                  overwrite=False):
         flowdir_gdbpath = os.path.join(setup_folder, 'flow_dir_15s_by_continent.gdb')
@@ -59,20 +62,20 @@ class PreProcessing:
         flowacc_path = os.path.join(outputdir,
                                     '{}_acc_15s.tif'.format(''.join(x for x in continentlist)))
         upa_path = os.path.join(outputdir,
-                                    '{}_upa_15s.tif'.format(''.join(x for x in continentlist)))
+                                '{}_upa_15s.tif'.format(''.join(x for x in continentlist)))
 
-        #Make sure that outputdir and tmpdir exist
+        # Make sure that outputdir and tmpdir exist
         if not os.path.exists(outputdir):
             print("{} does not exists. Creating it...".format(outputdir))
             os.mkdir(outputdir)
-            
+
         if not os.path.exists(tmpdir):
             print("{} does not exists. Creating it...".format(tmpdir))
             os.mkdir(tmpdir)
 
         # Standard mosaic flow dir rasters
-        combine_flow_direction_raster(hydrosheds_flowdirgdb_path=flowdir_gdbpath, 
-                                      continentlist=continentlist, 
+        combine_flow_direction_raster(hydrosheds_flowdirgdb_path=flowdir_gdbpath,
+                                      continentlist=continentlist,
                                       outputdir=outputdir,
                                       overwrite=overwrite)
 
@@ -94,12 +97,13 @@ class PreProcessing:
         get_continental_hsgrids(continentlist, upa_path, pixarea_path, globallakes_fraction_15s, outputdir,
                                 overwrite)
 
-        #Copy 'landratio_correction.tif' to setup folder
+        # Copy 'landratio_correction.tif' to setup folder
         copygrids([landratio], setup_folder, outputdir)
 
-        #Get cell position (row and column indices) of stations in HR flow accumulation raster
+        # Get cell position (row and column indices) of stations in HR flow accumulation raster
         # if process_stations:
         #     create_stationrastermapping(in_flowacc_path=flowacc_path, in_stations_vector=stations, outputdir)
+
 
 if __name__ == '__main__':
     import os
@@ -107,7 +111,7 @@ if __name__ == '__main__':
 
     # Folder structure
     rootdir = (os.path.dirname(os.path.abspath(
-            getsourcefile(lambda: 0)))).split('\\src')[0]
+        getsourcefile(lambda: 0)))).split('\\src')[0]
     datdir = os.path.join(rootdir, 'data')
     resdir = os.path.join(rootdir, 'results')
 
