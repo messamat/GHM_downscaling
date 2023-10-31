@@ -1,7 +1,6 @@
 import arcpy
 from arcpy.sa import *
 import os
-from preprocessing.helper import get_continental_extent
 
 arcpy.CheckOutExtension("Spatial")
 

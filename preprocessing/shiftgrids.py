@@ -1,6 +1,6 @@
 import os
 import shutil
-from open.DownstreamGrid import get_downstream_grid
+from DownstreamGrid import get_downstream_grid
 import arcpy
 from arcpy import env
 from arcpy.sa import Raster, RasterCalculator, Con, IsNull, Aggregate, FlowAccumulation

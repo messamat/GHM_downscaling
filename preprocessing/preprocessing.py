@@ -1,11 +1,11 @@
 import os
 
-from preprocessing.flowdirprep import combine_flow_direction_raster
-from preprocessing.simpleflowaccumulation import flow_accumulation
-from preprocessing.shiftgrids import calc_shift_keep_largerivers_mask_grids
-from preprocessing.additional_hsgrids import get_continental_hsgrids
-from preprocessing.copygrids import copygrids
-from preprocessing.stationsrastermapping import create_stationrastermapping
+from flowdirprep import combine_flow_direction_raster
+from simpleflowaccumulation import flow_accumulation
+from shiftgrids import calc_shift_keep_largerivers_mask_grids
+from additional_hsgrids import get_continental_hsgrids
+from copygrids import copygrids
+#from preprocessing.stationsrastermapping import create_stationrastermapping
 
 
 class PreProcessing:
@@ -98,9 +98,8 @@ class PreProcessing:
         copygrids([landratio], setup_folder, outputdir)
 
         #Get cell position (row and column indices) of stations in HR flow accumulation raster
-        if process_stations:
-            create_stationrastermapping(flowacc_path, stations, outputdir)
-
+        # if process_stations:
+        #     create_stationrastermapping(in_flowacc_path=flowacc_path, in_stations_vector=stations, outputdir)
 
 if __name__ == '__main__':
     import os
@@ -116,7 +115,7 @@ if __name__ == '__main__':
 
     outputdir = os.path.join(datdir, "hs_reproduced")
     tmpdir = os.path.join(datdir, "hs_reproduced", "tmp")
-    continentlist = ['eu']
+    continentlist = ['af', 'ar', 'as', 'au', 'eu', 'na', 'sa', 'si']
     overwrite = False
     process_stations = False
 
