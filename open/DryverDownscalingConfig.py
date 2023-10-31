@@ -60,6 +60,7 @@ class DownscalingConfig:
                  temp_dir,
                  write_raster=False,
                  write_result='raster',
+                 write_dir=None,
                  mode='ts',
                  continent='euassi',
                  pois=False,
@@ -86,6 +87,7 @@ class DownscalingConfig:
         self.temp_dir = temp_dir
         self.write_raster = write_raster
         self.write_result = write_result
+        self.write_dir = write_dir
         self.mode = mode
         self.kwargs = kwargs
         self.continent = continent

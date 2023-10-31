@@ -174,7 +174,7 @@ def run_prepared_downscaling(path, number_of_worker=2):
         config = pickle.load(f)
     pool = Pool(processes=number_of_worker) #Sets up the pool of worker processes to which tasks can be offloaded
     run_tasks = partial(run_task, path=path) #Pass the "path" argument (because pool.map can only pass a single argument to a function)
-    poi_list = pool.map(run_tasks, [task for task in glob.glob('*task*.pickle', rootdir=path)]) #Iterate over time-steps-continents
+    poi_list = pool.map(run_tasks, [task for task in glob.glob(os.path.join(path, '*task*.pickle'))]) #Iterate over time-steps-continents
 
     if isinstance(config.pois, pd.DataFrame):
         poidf = pd.DataFrame([x[1] for x in poi_list],
@@ -190,7 +190,8 @@ def run_prepared_downscaling(path, number_of_worker=2):
 def gather_finished_downscaling(path):
     with open(os.path.join(path , 'config.pickle'), 'rb') as f:
         config = pickle.load(f)
-    poi_list = [pickle.load(open(result, 'rb')) for result in glob.glob('{}*result*.pickle'.format(path))]
+    poi_list = [pickle.load(open(result, 'rb')) for result in
+                glob.glob(os.path.join(path, '*result*.pickle'))]
     poi_list = [y for x in poi_list for y in x]
     poidf = pd.DataFrame([x[1] for x in poi_list], index=[x[0] for x in poi_list]).sort_index()
     poidf.columns = config.pois['stationid'].to_list()

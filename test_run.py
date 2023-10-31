@@ -24,7 +24,7 @@ hydrosheds_folder = os.path.join(rootdir, 'data',
                                  'hs_reproduced')  # '/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
 setup_folder = os.path.join(rootdir, 'data', 'setupdata_for_downscaling')
 stations_path = os.path.join(setup_folder, 'stations.csv')
-constants_folder = os.path.join(rootdir, 'src', 'DRYVER-main', 'constants')
+constants_folder = os.path.join(rootdir, 'src', 'GHM_downscaling', 'constants')
 pois = pd.read_csv(stations_path)  # points of interest
 if continent in {'eu', 'as', 'si', 'sa'}:
     xmin, xmax, ymin, ymax = get_continental_extent(continentlist)
@@ -39,7 +39,8 @@ dconfig = DownscalingConfig(wg_in_path=wginpath,
                             endyear=2019,
                             temp_dir=localdir,
                             write_raster=False,
-                            write_result='nc',
+                            write_result='raster',
+                            write_dir=localdir,
                             mode='ts',
                             continent=continent,
                             constants_folder=constants_folder,
@@ -58,6 +59,7 @@ dconfig = DownscalingConfig(wg_in_path=wginpath,
                             )
 
 ##1.1.DryverDownscalingWrapper ##############################################################################################
+print("DryverDownscalingWrapper")
 import pickle
 import glob
 from multiprocessing import Pool
@@ -105,6 +107,7 @@ correction_weights_15s = None
 correction_grid_30min = None
 
 #1.1.3.--------------------------- Run down.prepare() ---------------------------------------------------------------------
+print("Run down.prepare()")
 staticdata = {
     'mean_land_fraction': wg.land_fractions.data.reset_index().groupby('arcid')['landareafr'].mean(),
     'wg_input': wg.wg_input.data,
@@ -186,12 +189,12 @@ dd.save_and_run_ts()
 
 
 
-if isinstance(config.pois, pd.DataFrame):
-    poidf = pd.DataFrame([x[1] for x in poi_list],
-                         index=[x[0] for x in poi_list]).sort_index()
-    poidf.columns = config.pois['stationid'].to_list()
-    poidf.to_csv(os.path.join(config.temp_dir,
-                              '/selected_timeseries_data_{}_{}.csv'.format(config.startyear,
-                                                                           config.endyear)
-                              )
-                 )
+# if isinstance(config.pois, pd.DataFrame):
+#     poidf = pd.DataFrame([x[1] for x in poi_list],
+#                          index=[x[0] for x in poi_list]).sort_index()
+#     poidf.columns = config.pois['stationid'].to_list()
+#     poidf.to_csv(os.path.join(config.temp_dir,
+#                               '/selected_timeseries_data_{}_{}.csv'.format(config.startyear,
+#                                                                            config.endyear)
+#                               )
+#                  )

@@ -8,7 +8,7 @@ from open.DryverDownscalingConfig import DownscalingConfig
 from open.helper import get_continental_extent
 
 @Timer(name='decorator', text='Downscaling takes currently {minutes:.0f} minutes')
-def main(rtype, rootdir):
+def main(rtype, rootdir, localdir):
     """
     Preparation and running script for Downscaling.
     Modify variables in this main function to configure the downscaling and corresponding paths.
@@ -32,7 +32,7 @@ def main(rtype, rootdir):
     hydrosheds_folder = os.path.join(rootdir, 'data', 'hs_reproduced') #'/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
     setup_folder = os.path.join(rootdir, 'data', 'setupdata_for_downscaling')
     stations_path = os.path.join(setup_folder, 'stations.csv')
-    constants_folder = os.path.join(rootdir, 'src', 'DRYVER-main', 'constants')
+    constants_folder = os.path.join(rootdir, 'src', 'GHM_downscaling', 'constants')
     pois = pd.read_csv(stations_path) #points of interest
     if continent in {'eu', 'as', 'si', 'sa'}:
         xmin, xmax, ymin, ymax = get_continental_extent(continentlist)
@@ -43,11 +43,12 @@ def main(rtype, rootdir):
     dconfig = DownscalingConfig(wg_in_path=wginpath,
                                 wg_out_path=wgpath,
                                 hydrosheds_path=hydrosheds_folder,
-                                startyear=1901,
+                                startyear=2017,
                                 endyear=2019,
                                 temp_dir=localdir,
                                 write_raster=False,
                                 write_result='nc',
+                                write_dir=localdir,
                                 mode='ts',
                                 continent=continent,
                                 constants_folder=constants_folder,
@@ -88,9 +89,10 @@ if __name__ == '__main__':
     localdir = os.path.join(rootdir, 'results', 'downscaling_output')
     if not os.path.exists(localdir):
         os.mkdir(localdir)
-    main(rftype='ipg80',
-         localdir=localdir,
-         rootdir=rootdir)
+    main(rtype='ipg80',
+         rootdir=rootdir,
+         localdir=localdir
+         )
     # run_prepared_downscaling(localdir, 2)
     # gather_finished_downscaling(localdir)
 
