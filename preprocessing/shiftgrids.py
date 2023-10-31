@@ -8,7 +8,8 @@ arcpy.CheckOutExtension("Spatial")
 
 
 def calc_shift_keep_largerivers_mask_grids(in_upa_path, in_flowdir_30min, in_area_flowacc_30min,
-                                         tmpdir, outdir, continentlist, overwrite, verbose=True):
+                                           tmpdir, outdir, continentlist, overwrite,
+                                           del_tmpdir=False, verbose=True):
     if verbose:
         print("Computing shift and keep grids and large rivers mask...")
     env.workspace = r'in_memory'
@@ -90,4 +91,5 @@ def calc_shift_keep_largerivers_mask_grids(in_upa_path, in_flowdir_30min, in_are
         del areadifp, gap_flowacc, flowacc30min, gapflowdir, gapMask, largerivers_mask
 
     del max_HRupa_30min, max_HRupa_downstream_30min
-    shutil.rmtree(tmpdir)
+    if del_tmpdir:
+        shutil.rmtree(tmpdir)

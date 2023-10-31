@@ -95,7 +95,7 @@ class PreProcessing:
                                 overwrite)
 
         #Copy 'landratio_correction.tif' to setup folder
-        copygrids([landratio], setup_folder, outputdir)
+        copygrids([landratio], setup_folder, outputdir, overwrite)
 
         #Get cell position (row and column indices) of stations in HR flow accumulation raster
         # if process_stations:
