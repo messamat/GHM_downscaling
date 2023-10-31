@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from osgeo import gdal, ogr, osr
+import netCDF4
 import numba
 from numba import cfunc, carray
 from numba.types import intc, CPointer, float64, intp, voidptr
@@ -112,8 +113,8 @@ class DryverDownscaling:
         :func:`~DryverDownscaling.DryverDownscaling.remove_outliers_scipy` and
         :func:`~DryverDownscaling.DryverDownscaling.spatial_window_averaging`
         are used in specific parts of the disaggregation of lr runoff to hr runoff and discharge.
-        First for all non-reliable (land area fractions below 0.5 %) and nan value grid cells are interpolated
-        (get_smoothed_runoff). Then outliers are removed from the grid by limiting the value of a cell to two times the
+        First, for all non-reliable (land area fractions below 0.5 %) and nan value grid cells are interpolated
+        (get_smoothed_runoff). Then, outliers are removed from the grid by limiting the value of a cell to two times the
         maximum or half of the minimum of its neighbours (remove_outliers_scipy). After interpolating the 0.5 degree to
         0.1 degree the runoff smoothing is done with an averaging window of 5 (0.1 degree cells), which means that
         every cell is recalculated of itself and its surrounding 24 neighbours.
@@ -300,10 +301,13 @@ class DryverDownscaling:
 
         # Write downscaled discharge to disk
         if self.dconfig.write_result == 'raster':
+            out_raster = os.path.join(self.dconfig.write_dir,
+                                      '15s_dis_{}_{:02d}'.format(year, month))
             DownScaleArray(self.dconfig,
                            self.dconfig.aoi,
                            write_raster_trigger=True).load_data(result.astype(np.float32),
-                                                                '15s_dis_{}_{:02d}'.format(year, month))
+                                                                out_raster
+                                                                )
 
         elif self.dconfig.write_result == 'nc': #netCDF
             gt = self.staticdata['hydrosheds_geotrans']
@@ -326,8 +330,8 @@ class DryverDownscaling:
                                 'units': 'months since {}-01-01'.format(self.dconfig.startyear)}
             ds.to_netcdf(
                 os.path.join(
-                    self.dconfig.temp_dir,
-                    '/15s_dis_{}_{:02d}.nc4'.format(month, year)
+                    self.dconfig.write_dir,
+                    '15s_dis_{}_{:02d}.nc4'.format(month, year)
                 ),
                 encoding={'dis': {'zlib': True, 'complevel': 9,
                                   'dtype': 'float32'}},
@@ -1119,7 +1123,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     run_tasks = partial(run_task, path=args.path)
-    tasklist = [task for task in glob.glob('{}*task*.pickle'.format(args.path))]
+    tasklist = [task for task in glob.glob(os.path.join(args.path,'*task*.pickle'))]
     splitlist = lambda lst, sz: [lst[i:i + sz] for i in range(0, len(lst), sz)]
     splitfactor = (-(-len(tasklist) // args.taskn))
     tasklist = splitlist(tasklist, splitfactor)
