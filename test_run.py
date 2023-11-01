@@ -35,8 +35,8 @@ if continent == 'rhone':
 dconfig = DownscalingConfig(wg_in_path=wginpath,
                             wg_out_path=wgpath,
                             hydrosheds_path=hydrosheds_folder,
-                            startyear=2018,
-                            endyear=2019,
+                            startyear=1999,
+                            endyear=1999,
                             temp_dir=localdir,
                             write_raster=False,
                             write_result='raster',
@@ -47,6 +47,7 @@ dconfig = DownscalingConfig(wg_in_path=wginpath,
                             pois=pois,
                             runoff_src='srplusgwr',
                             correct_global_lakes=True,
+                            sr_interp_wg_nas = False,
                             sr_smoothing=False,
                             l12harm=False,
                             dis_corr=True,
@@ -182,8 +183,134 @@ dd = DryverDownscaling(in_taskdata_dict_picklepath=task,
                        in_staticdata_dict_picklepath=os.path.join(dconfig.temp_dir, 'staticdata.pickle'),
                        in_config_dict_picklepath=os.path.join(dconfig.temp_dir, 'config.pickle')
                        )
-dd.save_and_run_ts()
+dd.save_and_run_ts() ###Uncomment to run
 
+#1.1.4.1.--------------------------- Troubleshoot smoothing -------------------------------------------
+explanation_outdir = os.path.join(rootdir, 'results', 'algorithm_explanation')
+def get_30min_array(staticdata, dconfig, s, nan=-99):
+    """
+    Create a numpy array in resolution of 30min(720 x 360 of WaterGAP data) from a pd.Series
+
+    Parameters
+    ----------
+    s : pd.Series or 'flowdir'
+        pandas Series is mapped via index (arcid) or via 'flowdir' via inputdir
+    nan : int
+        value which represents nan
+
+    Returns
+    -------
+    np.array
+    """
+    array = np.full((360, 720), nan)
+    wg_input = staticdata['wg_input']
+    aoi = dconfig.aoi
+    if isinstance(s, pd.Series):
+        s.name = 'variable'
+        df = wg_input.merge(s, left_index=True, right_index=True)  # Append basic information
+        flowdir = False
+    elif s == 'flowdir':
+        df = wg_input.rename(columns={"G_FLOWDIR.UNF2": "variable"})
+        flowdir = True
+    else:
+        raise Exception('not implemented')
+
+    # Convert df to numpy array
+    for x in df.itertuples():
+        array[x._2 - 1, x._3 - 1] = x.variable
+
+    # Subset array to intersect with area of interest
+    ar = array[int(360 - (aoi[1][1] + 90) * 2):int(360 - (aoi[1][0] + 90) * 2),
+         int((aoi[0][0] + 180) * 2): int((aoi[0][1] + 180) * 2)]
+
+    if flowdir:
+        # avoid flow out of aoi
+        # top border
+        ar[0, :][ar[0, :] >= 32] = 0
+        # left border
+        ar[:, 0][ar[:, 0] == 32] = 0
+        ar[:, 0][ar[:, 0] == 16] = 0
+        ar[:, 0][ar[:, 0] == 8] = 0
+        # right border
+        ar[:, -1][ar[:, -1] == 128] = 0
+        ar[:, -1][ar[:, -1] == 1] = 0
+        ar[:, -1][ar[:, -1] == 2] = 0
+        # bottom border
+        ar[-1, :][ar[-1, :] == 8] = 0
+        ar[-1, :][ar[-1, :] == 4] = 0
+        ar[-1, :][ar[-1, :] == 2] = 0
+    return ar
+
+def export_wgseries_to_tif(staticdata, dconfig, s, out_dir, out_filename):
+    if isinstance(s,pd.Series):
+        ar = get_30min_array(staticdata=staticdata, dconfig=dconfig,
+                                                    s=s, nan=np.nan)
+    elif isinstance(s, np.ndarray):
+        ar=s
+
+    dtype = gdal.GDT_Float32
+
+    if 'dtype' in kwargs:
+        dtype = kwargs['dtype']
+
+    write_raster_specs = {
+                '30min': 2,
+                '6min': 10,
+                '30sec': 120,
+                '15s': 240
+            }
+
+    rmulti = write_raster_specs['30min']
+    # Get number of cols and rows based on extent and conversion factor
+    no_cols = (aoi[0][1] - aoi[0][0]) * rmulti
+    no_rows = (aoi[1][1] - aoi[1][0]) * rmulti
+    cellsize = 1 / rmulti
+    leftdown = (aoi[0][0], aoi[1][0])  # lower-left corner of extent
+    grid_specs = (int(no_rows), int(no_cols), cellsize, leftdown)
+
+    rows, cols, size, origin = grid_specs
+    originx, originy = origin
+
+    driver = gdal.GetDriverByName('GTiff')
+    name = os.path.join(out_dir, out_filename)
+    out_raster = driver.Create(name, cols, rows, 1, dtype)
+    out_raster.SetGeoTransform((originx, size, 0, originy, 0, size))
+    out_band = out_raster.GetRasterBand(1)
+    out_band.WriteArray(ar[::-1])
+    out_band.SetNoDataValue(-99.)
+    out_raster_srs = osr.SpatialReference()
+    out_raster_srs.ImportFromEPSG(4326)
+    out_raster.SetProjection(out_raster_srs.ExportToWkt())
+
+    out_band.FlushCache()
+    out_raster.FlushCache()
+    outband = None
+    out_raster = None
+
+runoff = dd.taskdata['sr'] + dd.taskdata['gwrunoff']
+
+mean_land_fraction = dd.staticdata['mean_land_fraction']
+
+# Identify and remove grid cells with less than 5% land area
+not_reliable_arcids = mean_land_fraction[mean_land_fraction <= 0.5].index
+reliable_surface_runoff = (runoff.drop(not_reliable_arcids))
+
+# Add
+
+# Convert pd series of surface runoff (with removed cells) to 30 min array
+upper = dd.get_30min_array(reliable_surface_runoff, np.nan)
+# Run interpolation on a point-equivalent of the surface runoff raster
+points = dd.create_inmemory_30min_pointds(upper)
+lower = dd.interpolation_to_grid(ds=points,
+                                   resolution='30min',
+                                   alg="invdistnn:power=1.0:smoothing=0.0:radius=20"
+                                       ":min_points=1:max_points=9:nodata=-99")
+# Fill dropped cells with interpolated values
+new_surface_runoff_land_mm = dd.stack(upper, lower)
+
+export_wgseries_to_tif(staticdata, dconfig, s=new_surface_runoff_land_mm,
+                       out_dir=explanation_outdir,
+                       out_filename='interpolated_srgwr_test.tif')
 #1.1.4.1.2--------------------------- Run save_and_run_ts() -------------------------------------------
 #return dd.save_and_run_ts()
 

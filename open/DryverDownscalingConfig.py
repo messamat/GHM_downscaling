@@ -67,6 +67,7 @@ class DownscalingConfig:
                  constants_folder=None,
                  runoff_src='srplusgwr',
                  correct_global_lakes=True,
+                 sr_interp_wg_nas=False,
                  sr_smoothing=False,
                  l12harm=False,
                  dis_corr=True,
@@ -95,6 +96,7 @@ class DownscalingConfig:
         self.constants_folder = constants_folder
         self.runoff_src = runoff_src
         self.correct_global_lakes = correct_global_lakes
+        self.sr_interp_wg_nas = sr_interp_wg_nas
         self.sr_smoothing = sr_smoothing
         self.l12harm = l12harm
         self.dis_corr = dis_corr

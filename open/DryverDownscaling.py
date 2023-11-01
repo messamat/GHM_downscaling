@@ -174,7 +174,7 @@ class DryverDownscaling:
         #
         print('timestep {} {} started'.format(month, year))
         #Get and pre-format WG data to process -------------------------------------------------------------------------
-        if self.dconfig.runoff_src == 'cellrunoff':
+        if self.dconfig.runoff_src == 'cellrunoff': #This is not currently applied
             cellrunoff = self.taskdata['netdis_30min_series'].dropna()
 
             #Convert cell runoff from km3/yr to m3/s
@@ -203,7 +203,7 @@ class DryverDownscaling:
             raise Exception('{} not implemented as runoff_src'.format(self.dconfig.runoff_src))
 
         #Drop or interpolate NA cells (and cells with < 0.5% land fraction)
-        if self.dconfig.sr_smoothing: #Not turned on right now - need to check if "get_smoothed_runoff" function works
+        if self.dconfig.sr_interp_wg_nas: #Not turned on right now - need to check if "get_smoothed_runoff" function works
             #Interpolate all LR cells with land area fractions below 0.5 % and nan value grid cells
             reliable_surfacerunoff_ar = self.get_smoothed_runoff(sr)
         else:
@@ -331,7 +331,7 @@ class DryverDownscaling:
             ds.to_netcdf(
                 os.path.join(
                     self.dconfig.write_dir,
-                    '15s_dis_{}_{:02d}.nc4'.format(month, year)
+                    '15s_dis_{}_{:02d}.nc4'.format(year, month)
                 ),
                 encoding={'dis': {'zlib': True, 'complevel': 9,
                                   'dtype': 'float32'}},
@@ -374,14 +374,14 @@ class DryverDownscaling:
         del tmp_ds
         tmp_interp[tmp_interp == -99] = np.nan
 
-        #Perform 5x5 mean filtering on 6 min raster (excluding NAs) — if sr.smoothing == True
+        #if sr.smoothing == True -- Perform 5x5 mean filtering on 6 min raster (excluding NAs)
         if self.dconfig.sr_smoothing:
             tmp_smooth = self.spatial_window_averaging(tmp_interp, 5)
         else:
             tmp_smooth = tmp_interp
 
         #Disaggregate from 6 min to 15 s
-        interpolated_smooth_15s = self.disaggregate(tmp_smooth, 24)
+        interpolated_smooth_15s = self.disaggregate(tmp_smooth, factor=24)
         del tmp_interp
 
         if self.dconfig.l12harm:
@@ -438,9 +438,11 @@ class DryverDownscaling:
         """
 
         mean_land_fraction = self.staticdata['mean_land_fraction']
+
         # Identify and remove grid cells with less than 5% land area
         not_reliable_arcids = mean_land_fraction[mean_land_fraction <= 0.5].index
         reliable_surface_runoff = (runoff.drop(not_reliable_arcids))
+
         #Convert pd series of surface runoff (with removed cells) to 30 min array
         upper = self.get_30min_array(reliable_surface_runoff, np.nan)
         #Run interpolation on a point-equivalent of the surface runoff raster
@@ -1055,7 +1057,7 @@ class DryverDownscaling:
         dsarray : DownscalingArray
             array which should be disaggregated into higher resolution
         factor : number
-            target resolution as string
+            disaggregation factor (ratio of target resolution to original resolution) as integer
         Returns
         -------
         np.Array

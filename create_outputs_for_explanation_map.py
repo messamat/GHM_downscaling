@@ -16,6 +16,10 @@ localdir = os.path.join(rootdir, 'results', 'downscaling_output')
 if not os.path.exists(localdir):
     os.mkdir(localdir)
 
+explanation_outdir = os.path.join(rootdir, 'results', 'algorithm_explanation')
+if not os.path.exists(explanation_outdir ):
+    os.mkdir(explanation_outdir)
+
 continentlist = ['eu']  # ['eu', 'as', 'si']
 continent = ''.join(continentlist)
 wginpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data',
@@ -47,6 +51,7 @@ dconfig = DownscalingConfig(wg_in_path=wginpath,
                             pois=pois,
                             runoff_src='srplusgwr',
                             correct_global_lakes=True,
+                            sr_interp_wg_nas = False,
                             sr_smoothing=False,
                             l12harm=False,
                             dis_corr=True,
@@ -215,6 +220,7 @@ def get_30min_array(staticdata, dconfig, s, nan=-99):
     # Subset array to intersect with area of interest
     ar = array[int(360 - (aoi[1][1] + 90) * 2):int(360 - (aoi[1][0] + 90) * 2),
          int((aoi[0][0] + 180) * 2): int((aoi[0][1] + 180) * 2)]
+
     if flowdir:
         # avoid flow out of aoi
         # top border
@@ -233,44 +239,57 @@ def get_30min_array(staticdata, dconfig, s, nan=-99):
         ar[-1, :][ar[-1, :] == 2] = 0
     return ar
 
-reliable_surfacerunoff_ar = get_30min_array(staticdata=staticdata, dconfig=dconfig,
-                                            s=srplusgwr , nan=np.nan)
+def export_wgseries_to_tif(staticdata, dconfig, s, out_dir, out_filename):
+    reliable_surfacerunoff_ar = get_30min_array(staticdata=staticdata, dconfig=dconfig,
+                                                s=s, nan=np.nan)
 
-dtype = gdal.GDT_Float32
+    dtype = gdal.GDT_Float32
 
-if 'dtype' in kwargs:
-    dtype = kwargs['dtype']
+    if 'dtype' in kwargs:
+        dtype = kwargs['dtype']
 
-write_raster_specs = {
-            '30min': 2,
-            '6min': 10,
-            '30sec': 120,
-            '15s': 240
-        }
+    write_raster_specs = {
+                '30min': 2,
+                '6min': 10,
+                '30sec': 120,
+                '15s': 240
+            }
 
-rmulti = write_raster_specs['30min']
-# Get number of cols and rows based on extent and conversion factor
-no_cols = (aoi[0][1] - aoi[0][0]) * rmulti
-no_rows = (aoi[1][1] - aoi[1][0]) * rmulti
-cellsize = 1 / rmulti
-leftdown = (aoi[0][0], aoi[1][0])  # lower-left corner of extent
-grid_specs = (int(no_rows), int(no_cols), cellsize, leftdown)
+    rmulti = write_raster_specs['30min']
+    # Get number of cols and rows based on extent and conversion factor
+    no_cols = (aoi[0][1] - aoi[0][0]) * rmulti
+    no_rows = (aoi[1][1] - aoi[1][0]) * rmulti
+    cellsize = 1 / rmulti
+    leftdown = (aoi[0][0], aoi[1][0])  # lower-left corner of extent
+    grid_specs = (int(no_rows), int(no_cols), cellsize, leftdown)
 
-rows, cols, size, origin = grid_specs
-originx, originy = origin
+    rows, cols, size, origin = grid_specs
+    originx, originy = origin
 
-driver = gdal.GetDriverByName('GTiff')
-name = os.path.join(localdir, 'srplusgwr_eu_30min_200308.tif')
-out_raster = driver.Create(name, cols, rows, 1, dtype)
-out_raster.SetGeoTransform((originx, size, 0, originy, 0, size))
-out_band = out_raster.GetRasterBand(1)
-out_band.WriteArray(reliable_surfacerunoff_ar[::-1])
-out_band.SetNoDataValue(-99.)
-out_raster_srs = osr.SpatialReference()
-out_raster_srs.ImportFromEPSG(4326)
-out_raster.SetProjection(out_raster_srs.ExportToWkt())
+    driver = gdal.GetDriverByName('GTiff')
+    name = os.path.join(out_dir, out_filename)
+    out_raster = driver.Create(name, cols, rows, 1, dtype)
+    out_raster.SetGeoTransform((originx, size, 0, originy, 0, size))
+    out_band = out_raster.GetRasterBand(1)
+    out_band.WriteArray(reliable_surfacerunoff_ar[::-1])
+    out_band.SetNoDataValue(-99.)
+    out_raster_srs = osr.SpatialReference()
+    out_raster_srs.ImportFromEPSG(4326)
+    out_raster.SetProjection(out_raster_srs.ExportToWkt())
 
-out_band.FlushCache()
-out_raster.FlushCache()
-outband = None
-out_raster = None
+    out_band.FlushCache()
+    out_raster.FlushCache()
+    outband = None
+    out_raster = None
+
+export_wgseries_to_tif(staticdata=staticdata,
+                       dconfig=dconfig,
+                       s=srplusgwr,
+                       out_dir=explanation_outdir,
+                       out_filename='srplusgwr_eu_30min_200308.tif')
+
+export_wgseries_to_tif(staticdata=staticdata,
+                       dconfig=dconfig,
+                       s=staticdata['mean_land_fraction'],
+                       out_dir=explanation_outdir,
+                       out_filename='mean_wgland_fraction_30min.tif')
