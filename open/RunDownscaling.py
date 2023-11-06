@@ -87,7 +87,7 @@ def main(rtype, rootdir, localdir):
 if __name__ == '__main__':
     rootdir = os.path.dirname(os.path.abspath(
         getsourcefile(lambda:0))).split('\\src')[0]
-    localdir = os.path.join(rootdir, 'results', 'downscaling_output')
+    localdir = os.path.join(rootdir, 'results', 'downscaling_output') #Should add a date to this so that it can be made a true temp_dir
     if not os.path.exists(localdir):
         os.mkdir(localdir)
     main(rtype='ipg80',

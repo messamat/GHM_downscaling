@@ -143,20 +143,21 @@ class WGData:
                 globallakes_addition = diff_gloresglolak.loc[(outflowcell, slice(None), slice(None)), :].reset_index()
                 globallakes_addition = globallakes_addition.loc[globallakes_addition.year >= config.startyear, 'variable'].values #Subset years within period of interest
 
-                for aid in redistmp.index.get_level_values('arcid'): #For each cell intersecting with the global lake
-                    frac = redistmp.loc[aid, 'fracarea'] #Extract the fraction of that cell that intersects with the lake
+                for arcid in redistmp.index.get_level_values('arcid'): #For each cell intersecting with the global lake
+                    frac = redistmp.loc[arcid, 'fracarea'] #Extract the fraction of that cell that intersects with the lake
                     #Remove storage change from outflow cell and redistribute to all cells that intersect with lake
-                    if aid == outflowcell:
-                        cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] = (
-                                cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] + globallakes_addition)
+                    # (NEED to make sure this isn't redundant with step in DryverDownscaling and that the sign is correct)
+                    if arcid == outflowcell:
+                        cell_runoff.loc[(arcid, slice(None), slice(None)), 'net_cell_runoff'] = (
+                                cell_runoff.loc[(arcid, slice(None), slice(None)), 'net_cell_runoff'] + globallakes_addition)
 
-                    cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] = (
-                            cell_runoff.loc[(aid, slice(None), slice(None)), 'net_cell_runoff'] - (globallakes_addition * frac))
+                    cell_runoff.loc[(arcid, slice(None), slice(None)), 'net_cell_runoff'] = (
+                            cell_runoff.loc[(arcid, slice(None), slice(None)), 'net_cell_runoff'] - (globallakes_addition * frac))
 
                     #Create a df to record storage change for each cell and time step
                     years = [x for x in range(config.startyear, config.endyear+1)]
                     months = [x for x in range(1, 13)]
-                    mix = pd.MultiIndex.from_product([[int(aid)], years, months],
+                    mix = pd.MultiIndex.from_product([[int(arcid)], years, months],
                                                      names=['arcid', 'years', 'month'])
                     globallakes_additionlist.append(pd.Series(globallakes_addition*frac, mix))
 
@@ -167,7 +168,8 @@ class WGData:
 
     def get_longterm_avg_version(self):
         """
-        Converts cell_runoff, surface_runoff, surface_runoff_land_mm, discharge into long term average
+        Converts cell_runoff, surface_runoff, surface_runoff_land_mm, discharge into long term average.
+        Not currently used in downscaling.
 
         Returns
         -------

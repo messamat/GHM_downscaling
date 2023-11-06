@@ -202,7 +202,7 @@ class DryverDownscaling:
         else:
             raise Exception('{} not implemented as runoff_src'.format(self.dconfig.runoff_src))
 
-        #Drop or interpolate NA cells (and cells with < 0.5% land fraction)
+        #Interpolate or drop NA cells (and cells with < 0.5% land fraction)
         if self.dconfig.sr_interp_wg_nas: #Not turned on right now - need to check if "get_smoothed_runoff" function works
             #Interpolate all LR cells with land area fractions below 0.5 % and nan value grid cells
             reliable_surfacerunoff_ar = self.get_smoothed_runoff(sr)
@@ -868,7 +868,7 @@ class DryverDownscaling:
                                                             in_flowdir=flowdir)
                                            )
 
-        #Compute difference in net discharge from WG and from the accumulated corrected discharge
+        #Compute difference in net discharge from WG and from the accumulated pre-corrected discharge
         net_dis_dif_largerivers_30min = net_wgdis_largerivers_30min - net_precorrecteddis_largerivers_30min
 
         #Transfer net_dis_dif from outside the large-rivers mask to large rivers downstream
@@ -904,8 +904,8 @@ class DryverDownscaling:
 
     def smooth_correction_grid(self, correction_grid_30min):
         """
-        For all cells for which the correction value does not match that of the downstream cell. Decrease the difference
-        in values between the two cells by:
+        For all cells for which the sign of the correction value does not match that of the downstream cell.
+        Decrease the difference in values between the two cells by:
          - if the correction value in the upstream cell is negative and that of the downstream cell is negative,
             adding the minimum value among the two cells to the upstream cell
          - if the correction value in the upstream cell is positive and that of the downstream cell is positive,

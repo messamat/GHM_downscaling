@@ -108,12 +108,14 @@ class HydroSHEDSData:
         return kg, sg
 
     def get_wg_corresponding_grid(self, fp):
+        """Read a LR raster file as a numpy array, making sure that it aligns with flow direction
+        """
         ra = gdal.Open(fp)
-        xoff = abs((round(ra.GetGeoTransform()[0] - self.flowdir.GetGeoTransform()[0])) * 2)
-        yoff = ((round(ra.GetGeoTransform()[3]) - round((self.flowdir.GetGeoTransform()[3]))) * 2)
-        xsize = self.flowdir.RasterXSize // 120
-        ysize = self.flowdir.RasterYSize // 120
-        raar = ra.ReadAsArray(xoff=xoff, yoff=yoff, xsize=xsize, ysize=ysize)
+        xoff = abs((round(ra.GetGeoTransform()[0] - self.flowdir.GetGeoTransform()[0])) * 2) #longitudinal difference of upper-left corner
+        yoff = ((round(ra.GetGeoTransform()[3]) - round((self.flowdir.GetGeoTransform()[3]))) * 2) #latitudinal difference of upper-left corner
+        ncols = self.flowdir.RasterXSize // 120 #Get number of cols if aggregating by a factor of 120 (e.g., from 15 sec to 30 min)
+        nrows = self.flowdir.RasterYSize // 120 #Get number of rows if aggregating by a factor of 120 (e.g., from 15 sec to 30 min)
+        raar = ra.ReadAsArray(xoff=xoff, yoff=yoff, xsize=ncols, ysize=nrows)
 
         if raar.dtype.kind == 'f':
             raar[raar == ra.GetRasterBand(1).GetNoDataValue()] = np.nan

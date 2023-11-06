@@ -66,17 +66,19 @@ class DryverDownscalingWrapper:
         self.dconfig = config
         kwargs.update(config.kwargs)
         self.kwargs = kwargs
+
         self.wg = WGData(self.dconfig, **kwargs) #Get WaterGAP object instance (data and tools related to WG)
-        self.hydrosheds = HydroSHEDSData(self.dconfig, **kwargs) #Get WaterGAP object instance (data and tools related to HydroSHEDS)
         self.wg.calc_continentalarea_to_landarea_conversion_factor() #Compute conversion factor to concentrate runoff from continental area contained in WG pixels to actual land area
         self.wg.calc_surface_runoff_land_mm() #Apply conversion factor
         if self.dconfig.mode == 'longterm_avg':
             self.wg.get_longterm_avg_version()
             self.wg.longterm_avg_converted = True
+
+        self.hydrosheds = HydroSHEDSData(self.dconfig, **kwargs) #Get WaterGAP object instance (data and tools related to HydroSHEDS)
+
         self.daysinmonth_dict = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
                                 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
-
-        self.temp_downscalearray = DownScaleArray(config, self.dconfig.aoi, **kwargs)
+        #self.temp_downscalearray = DownScaleArray(config, self.dconfig.aoi, **kwargs) - never used elsewhere in the code
         self.surfacerunoff_based_dis = None
         self.corrected_dis = None
         self.correction_weights_15s = None
