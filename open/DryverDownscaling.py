@@ -301,12 +301,10 @@ class DryverDownscaling:
 
         # Write downscaled discharge to disk
         if self.dconfig.write_result == 'raster':
-            out_raster = os.path.join(self.dconfig.write_dir,
-                                      '15s_dis_{}_{:02d}'.format(year, month))
             DownScaleArray(self.dconfig,
                            self.dconfig.aoi,
                            write_raster_trigger=True).load_data(result.astype(np.float32),
-                                                                out_raster
+                                                                '15s_dis_{}_{:02d}'.format(year, month)
                                                                 )
 
         elif self.dconfig.write_result == 'nc': #netCDF
