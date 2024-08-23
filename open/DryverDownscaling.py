@@ -402,9 +402,9 @@ class DryverDownscaling:
             #Disaggregate global lakes redistribution values from 30 min pd.Series in km3/y to 15 arc arrays in m3/s
             globallakes_addition_ar_15s_m3s = self.disaggregate_ar(
                 self.get_30min_array(
-                    self.taskdata['globallakes_addition']
-                    / (self.daysinmonth_dict[kwargs['month']] * 24 * 60 * 60) * 1000000000,
-                    float(0)),
+                    s=(self.taskdata['globallakes_addition']
+                       / (self.daysinmonth_dict[kwargs['month']] * 24 * 60 * 60)) * 1000000000,
+                    nan=float(0)),
                 factor=120)
 
             #Redistribute storage change based on fraction of lakes in LR cell intersecting with HR cell

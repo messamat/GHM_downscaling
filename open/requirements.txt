@@ -1,8 +1,9 @@
+codetiming>=1.2.0
 gdal>=3.1.4
-pandas>=1.1.4
-numpy>=1.19.4
-numba>=0.53.1
 geopandas>=0.8.1
+netcdf4>=1.6.0
+numba>=0.53.1
+numpy>=1.19.4 (<1.2)
+pandas>=1.1.4
 scipy>=1.5.3
 xarray>=0.16.1
-codetiming>=1.2.0
