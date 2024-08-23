@@ -3,7 +3,7 @@ from datetime import datetime
 #RunDownscaling.py #####################################################################################################
 import os
 from inspect import getsourcefile
-from osgeo import gdal, osr
+from osgeo import gdal, osr, ogr
 import pandas as pd
 from codetiming import Timer
 
@@ -129,12 +129,12 @@ with open(os.path.join(dconfig.temp_dir, 'staticdata.pickle'), 'wb') as f:
 
 # Create a list that holds, for each year-month the time-series data that are required to run the downscaling
 # Each of these time steps thus represent a discrete "task"
-data = {}
+taskdata_dict = {}
 timestep=1
 for yr in range(dconfig.startyear, dconfig.endyear + 1):
         for mon in range(1, 13):
             print(timestep)
-            data["{0}_{1}".format(yr, mon)] = {
+            taskdata_dict["{0}_{1}".format(yr, mon)] = {
                 'i': timestep,
                 'sr': wg.surface_runoff_land_mm.data.set_index(['arcid',
                                                                 'month',
@@ -157,28 +157,49 @@ for yr in range(dconfig.startyear, dconfig.endyear + 1):
                     slice(None), mon, yr],
             }
             if dconfig.correct_global_lakes:
-                data["{0}_{1}".format(yr, mon)]['globallakes_addition'] = (
+                taskdata_dict["{0}_{1}".format(yr, mon)]['globallakes_addition'] = (
                     wg.globallakes_addition.loc)[slice(None), yr, mon]
             timestep += 1
 
 # Write list of tasks to pickle
-for t in data:
+for t in taskdata_dict:
     out_pickle = os.path.join(dconfig.temp_dir,
-                              'data_task{:03d}.pickle'.format(data[t]['i'])
+                              'data_task{:03d}.pickle'.format(taskdata_dict[t]['i'])
                               )
     with open(out_pickle, 'wb') as f:
-        pickle.dump(data[t], f)
+        pickle.dump(taskdata_dict[t], f)
 
 if config:
     dconfig.pickle()
 
-del hydrosheds
-del wg
+#4. ---------------------------------------Run DryverDownscaling.run_task() > save_and_run_ts > run_ts for year=2003, month=08 -------------------
+import warnings
+import argparse
+import glob
+from functools import partial
+import os
+import pickle
 
+import numpy as np
+import pandas as pd
+import xarray as xr
+from osgeo import gdal, ogr, osr
+import netCDF4
+import numba
+from numba import cfunc, carray
+from numba.types import intc, CPointer, float64, intp, voidptr
+from scipy.ndimage import generic_filter
+from scipy import LowLevelCallable
 
+from open.DownstreamGrid import get_inflow_sum, get_downstream_grid
+from open.ModifiedFlowAcc import FlowAccTT
+from open.DownScaleArray import DownScaleArray
+
+year=2003
+month=8
 #Compute total runoff
 #elif self.dconfig.runoff_src == 'srplusgwr':
-srplusgwr = data['2003_8']['sr'] + data['2003_8']['gwrunoff']
+srplusgwr = taskdata_dict['2003_8']['sr'] + taskdata_dict['2003_8']['gwrunoff']
 #self.dconfig.sr_smoothing == False
 srplusgwr = srplusgwr.dropna()
 
@@ -245,41 +266,184 @@ DownScaleArray(dconfig,
                write_raster_trigger=True).load_data(reliable_surfacerunoff_ar,
                                                     status='30min_srplusgwr_eu_200308'
                                                     )
-# dtype = gdal.GDT_Float32
+
+#4.d.--------- Compute initial 15-sec runoff-based cell discharge ---------------------------------------------------
+#runoffbased_celldis_15s_ar = self.get_runoff_based_celldis(reliable_surfacerunoff_ar, month=month, yr=year)
+kwargs['month'] = month
+kwargs['year'] = year
+
+#d.ii. inverse distance interpolation from lr to intermediate resolution of 0.1 degree---------------------------------
+#create_inmemory_30min_pointds---------------
+inp=reliable_surfacerunoff_ar
+all=True
+aoi = dconfig.aoi
+coords = staticdata['coords']
+
+df = None
+inptype = 'other'
+
+drv = gdal.GetDriverByName('Memory')
+ds = drv.Create('runofftemp', 0, 0, 0, gdal.GDT_Unknown)
+lyr = ds.CreateLayer('runofftemp', None, ogr.wkbPoint)
+field_defn = ogr.FieldDefn('variable', ogr.OFTReal)
+lyr.CreateField(field_defn)
+
+#if 'all' in kwargs:
+for idx, value in np.ndenumerate(inp):
+    x = aoi[0][0] + (idx[1] / 2) + 0.25  # Create point in the middle of cells (0.25 arc-degs from the edge)
+    y = aoi[1][1] - ((idx[0] / 2) + 0.25)
+    if not np.isnan(value):
+        feat = ogr.Feature(lyr.GetLayerDefn())
+        # irow, icol = self.wg_input.data.loc[x.Index, ['GR.UNF2', 'GC.UNF2']]
+        feat.SetField("variable", value)
+        pt = ogr.Geometry(ogr.wkbPoint)
+        pt.SetPoint(0, x, y)
+        feat.SetGeometry(pt)
+        lyr.CreateFeature(feat)
+        feat.Destroy()
+tmp_ds = ds
+
+#tmp_interp = interpolation_to_grid(tmp_ds, '6min')---------------
+resolution = '6min'
+if resolution == '6min':
+    width = (aoi[0][1] - aoi[0][0]) * 10
+    height = (aoi[1][1] - aoi[1][0]) * 10
+
+outputbounds = [aoi[0][0], aoi[1][1], aoi[0][1], aoi[1][0]]
+alg = "invdistnn:power=2.0:smoothing=0.0:radius=1.8:max_points=9:nodata=-99"
+if 'alg' in kwargs:
+    alg = kwargs.pop('alg')
+out_raster_srs = osr.SpatialReference()
+out_raster_srs.ImportFromEPSG(4326)
+# Perform interpolation
+go = gdal.GridOptions(format='MEM',
+                      outputType=gdal.GDT_Float32,
+                      layers='runofftemp',
+                      zfield='variable',
+                      outputSRS=out_raster_srs,
+                      algorithm=alg,
+                      width=width,
+                      height=height,
+                      outputBounds=outputbounds)
+# Create output grid
+outr = gdal.Grid('outr', ds, options=go)
+res = outr.ReadAsArray().copy()
+# del outr
 #
-# if 'dtype' in kwargs:
-#     dtype = kwargs['dtype']
-#
-# write_raster_specs = {
-#             '30min': 2,
-#             '6min': 10,
-#             '30sec': 120,
-#             '15s': 240
-#         }
-#
-# rmulti = write_raster_specs['30min']
-# # Get number of cols and rows based on extent and conversion factor
-# no_cols = (aoi[0][1] - aoi[0][0]) * rmulti
-# no_rows = (aoi[1][1] - aoi[1][0]) * rmulti
-# cellsize = 1 / rmulti
-# leftdown = (aoi[0][0], aoi[1][0])  # lower-left corner of extent
-# grid_specs = (int(no_rows), int(no_cols), cellsize, leftdown)
-#
-# rows, cols, size, origin = grid_specs
-# originx, originy = origin
-#
-# driver = gdal.GetDriverByName('GTiff')
-# name = os.path.join(localdir, 'srplusgwr_eu_30min_200308.tif')
-# out_raster = driver.Create(name, cols, rows, 1, dtype)
-# out_raster.SetGeoTransform((originx, size, 0, originy, 0, size))
-# out_band = out_raster.GetRasterBand(1)
-# out_band.WriteArray(reliable_surfacerunoff_ar[::-1])
-# out_band.SetNoDataValue(-99.)
-# out_raster_srs = osr.SpatialReference()
-# out_raster_srs.ImportFromEPSG(4326)
-# out_raster.SetProjection(out_raster_srs.ExportToWkt())
-#
-# out_band.FlushCache()
-# out_raster.FlushCache()
-# outband = None
-# out_raster = None
+# del tmp_ds
+# del ds
+#tmp_interp=res
+res[res == -99] = np.nan
+
+DownScaleArray(dconfig,
+               dconfig.aoi,
+               write_raster_trigger=True).load_data(res,
+                                                    status='6min_srplusgwr_eu_200308'
+                                                    )
+tmp_smooth = res
+
+#d.iv. Disaggregate from 6 min to 15 s---------------------------------------------------------------------------
+#interpolated_smooth_15s = self.disaggregate(tmp_smooth, 24)
+a = np.repeat(tmp_smooth.data, 24, axis=0)
+interpolated_smooth_15s = np.repeat(a, 24, axis=1)
+DownScaleArray(dconfig,
+               dconfig.aoi,
+               write_raster_trigger=True).load_data(interpolated_smooth_15s,
+                                                    status='15s_srplusgwr_eu_200308'
+                                                    )
+# d.v. Remove 15-sec cells where original HydroSHEDS pixel area raster is NoData---------------------------
+#masked_diss_tmp_smooth = mask_wg_with_hydrosheds(interpolated_smooth_15s)
+hydrosheds_ar = staticdata['pixelarea']
+array = np.full(hydrosheds_ar.shape, np.nan)
+hydrosheds_geotrans = staticdata['hydrosheds_geotrans']
+coloffset = int(round(dconfig.aoi[0][0] - hydrosheds_geotrans[0]) // 0.5 * 120 * -1)
+rowoffset = int(round(dconfig.aoi[1][1] - hydrosheds_geotrans[3]) // 0.5 * 120)
+offset = interpolated_smooth_15s[rowoffset:, coloffset:]
+rowix = array.shape[0] - offset.shape[0]
+colix = array.shape[1] - offset.shape[1]
+if rowix == 0:
+    rowix = array.shape[0]
+if colix == 0:
+    colix = array.shape[1]
+wgdata = offset[:rowix, :colix]
+array[~np.isnan(hydrosheds_ar)] = wgdata[~np.isnan(hydrosheds_ar)]
+masked_diss_tmp_smooth = array
+
+DownScaleArray(dconfig,
+               dconfig.aoi,
+               write_raster_trigger=True).load_data(masked_diss_tmp_smooth,
+                                                    status='15s_srplusgwr_eu_200308_masked'
+                                                    )
+
+# d.vi. Compute runoff-based discharge in the cell (i.e. convert runoff from mm to m3/s)--------------------------------------
+#conv = self.convert_runoff_to_dis(masked_diss_tmp_smooth, **kwargs)
+if dconfig.mode == 'ts':
+    division_term = (daysinmonth_dict[kwargs['month']] * 24 * 60 * 60)
+area = staticdata['pixelarea']
+data = (masked_diss_tmp_smooth * area * 1000 / division_term)
+conv=data
+
+DownScaleArray(dconfig,
+               dconfig.aoi,
+               write_raster_trigger=True).load_data(conv,
+                                                    status='15s_srplusgwr_eu_200308_masked_m3s'
+                                                    )
+
+# d.vii. Correct runoff-based discharge for changes in storage of global lakes and reservoirs
+# (i.e., redistribute volume changes from global water bodies' pour points to all cells intersecting with
+# that global lake)
+if dconfig.correct_global_lakes:
+    globallakes_fraction_15s = staticdata['globallakes_fraction_15s']
+
+    globallakes_addition_15s_ar = get_30min_array(staticdata=staticdata,
+                                                  dconfig=dconfig,
+                                                  s=taskdata_dict['2003_8']['globallakes_addition'],
+                                                  nan=float(0))
+
+    DownScaleArray(dconfig,
+                   dconfig.aoi,
+                   write_raster_trigger=True).load_data(globallakes_addition_15s_ar,
+                                                        status='30min_globallakes_addition_eu_200308_masked_km3mo')
+
+
+    # Disaggregate global lakes redistribution values from 30 min pd.Series in km3/mo to 15 arc arrays in m3/s
+    lake_redis_m3s = get_30min_array(staticdata=staticdata,
+                                     dconfig=dconfig,
+                                     s=(taskdata_dict['2003_8']['globallakes_addition']/(daysinmonth_dict[kwargs['month']] * 24 * 60 * 60)) * 1000000000,
+                                     nan=float(0))
+
+    def disaggregate_ar(what, factor):
+        """ Takes a 2D numpy array and repeat the value of one pixel by factor along both axis
+
+        :param what: 2D Array which should be disaggregated
+        :type what: np.ndarray
+        :param factor: how often the value is repeated
+        :type factor: int
+        :return: disaggregated 2D array which values are repeated by the factor
+        :rtype: np.ndarray
+        """
+        a = np.repeat(what, factor, axis=0)
+        b = np.repeat(a, factor, axis=1)
+        return b
+
+    globallakes_addition_ar_15s_m3s = disaggregate_ar(lake_redis_m3s,factor=120)
+
+    DownScaleArray(dconfig,
+                   dconfig.aoi,
+                   write_raster_trigger=True).load_data(globallakes_addition_ar_15s_m3s,
+                                                        status='15s_globallakes_addition_eu_200308_masked_m3s')
+
+    # Redistribute storage change based on fraction of lakes in LR cell intersecting with HR cell
+    conv = conv - (globallakes_fraction_15s * globallakes_addition_ar_15s_m3s)
+
+    # Convert negative runoff-based discharge values to 0
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        conv = np.where(conv < 0, 0, conv)
+
+    DownScaleArray(dconfig,
+                   dconfig.aoi,
+                   write_raster_trigger=True).load_data(conv,
+                                                        status='15s_srplusgwr_eu_200308_masked_m3s_lkrescor')
+
+# 4.e. Compute initial correction values in each 30-min cell  ---------------------------------------------------------------
