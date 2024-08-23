@@ -105,7 +105,7 @@ class DownScaleArray:
         self.status = status
 
         if self.write_raster_trigger:
-            self.write_raster(path.join(self.config.temp_dir, 'r', self.status, '.tif'))
+            self.write_raster(path.join(self.config.write_dir, '{}.tif'.format(self.status)))
         return self
 
     def load(self, path_saved, status):
