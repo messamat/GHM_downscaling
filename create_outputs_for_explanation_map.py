@@ -1,5 +1,6 @@
-#RunDownscaling.py #####################################################################################################
+from datetime import datetime
 
+#RunDownscaling.py #####################################################################################################
 import os
 from inspect import getsourcefile
 from osgeo import gdal, osr
@@ -12,7 +13,7 @@ from open.helper import get_continental_extent
 
 rootdir = os.path.dirname(os.path.abspath(
     getsourcefile(lambda: 0))).split('\\src')[0]
-localdir = os.path.join(rootdir, 'results', 'downscaling_output')
+localdir = os.path.join(rootdir, 'results', 'downscaling_output_{}'.format(datetime.today().strftime('%Y%m%d')))
 if not os.path.exists(localdir):
     os.mkdir(localdir)
 
@@ -25,7 +26,7 @@ hydrosheds_folder = os.path.join(rootdir, 'data',
                                  'hs_reproduced')  # '/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
 setup_folder = os.path.join(rootdir, 'data', 'setupdata_for_downscaling')
 stations_path = os.path.join(setup_folder, 'stations.csv')
-constants_folder = os.path.join(rootdir, 'src', 'DRYVER-main', 'constants')
+constants_folder = os.path.join(rootdir, 'src', 'GHM_downscaling', 'constants')
 pois = pd.read_csv(stations_path)  # points of interest
 if continent in {'eu', 'as', 'si', 'sa'}:
     xmin, xmax, ymin, ymax = get_continental_extent(continentlist)
@@ -39,8 +40,9 @@ dconfig = DownscalingConfig(wg_in_path=wginpath,
                             startyear=2003,
                             endyear=2004,
                             temp_dir=localdir,
-                            write_raster=False,
+                            write_raster=True,
                             write_result='nc',
+                            write_dir=localdir,
                             mode='ts',
                             continent=continent,
                             constants_folder=constants_folder,
@@ -104,7 +106,7 @@ corrected_dis = None
 correction_weights_15s = None
 correction_grid_30min = None
 
-#--------------------------- Run down.prepare() ---------------------------------------------------------------------
+#--------------------------- Run down.prepare() (L70 of RunDownscaling.py) ---------------------------------------------------------------------
 staticdata = {
             'mean_land_fraction': wg.land_fractions.data.reset_index().groupby('arcid')['landareafr'].mean(),
             'wg_input': wg.wg_input.data,
@@ -175,11 +177,11 @@ del wg
 
 
 #Compute total runoff
+#elif self.dconfig.runoff_src == 'srplusgwr':
 srplusgwr = data['2003_8']['sr'] + data['2003_8']['gwrunoff']
+#self.dconfig.sr_smoothing == False
 srplusgwr = srplusgwr.dropna()
 
-
-#Save total runoff ###################################################################################################
 def get_30min_array(staticdata, dconfig, s, nan=-99):
     """
     Create a numpy array in resolution of 30min(720 x 360 of WaterGAP data) from a pd.Series
@@ -236,41 +238,48 @@ def get_30min_array(staticdata, dconfig, s, nan=-99):
 reliable_surfacerunoff_ar = get_30min_array(staticdata=staticdata, dconfig=dconfig,
                                             s=srplusgwr , nan=np.nan)
 
-dtype = gdal.GDT_Float32
-
-if 'dtype' in kwargs:
-    dtype = kwargs['dtype']
-
-write_raster_specs = {
-            '30min': 2,
-            '6min': 10,
-            '30sec': 120,
-            '15s': 240
-        }
-
-rmulti = write_raster_specs['30min']
-# Get number of cols and rows based on extent and conversion factor
-no_cols = (aoi[0][1] - aoi[0][0]) * rmulti
-no_rows = (aoi[1][1] - aoi[1][0]) * rmulti
-cellsize = 1 / rmulti
-leftdown = (aoi[0][0], aoi[1][0])  # lower-left corner of extent
-grid_specs = (int(no_rows), int(no_cols), cellsize, leftdown)
-
-rows, cols, size, origin = grid_specs
-originx, originy = origin
-
-driver = gdal.GetDriverByName('GTiff')
-name = os.path.join(localdir, 'srplusgwr_eu_30min_200308.tif')
-out_raster = driver.Create(name, cols, rows, 1, dtype)
-out_raster.SetGeoTransform((originx, size, 0, originy, 0, size))
-out_band = out_raster.GetRasterBand(1)
-out_band.WriteArray(reliable_surfacerunoff_ar[::-1])
-out_band.SetNoDataValue(-99.)
-out_raster_srs = osr.SpatialReference()
-out_raster_srs.ImportFromEPSG(4326)
-out_raster.SetProjection(out_raster_srs.ExportToWkt())
-
-out_band.FlushCache()
-out_raster.FlushCache()
-outband = None
-out_raster = None
+#Save total runoff - not  in original code #############################################################################
+#Use DownScaleArray.py code
+DownScaleArray(dconfig,
+               dconfig.aoi,
+               write_raster_trigger=True).load_data(reliable_surfacerunoff_ar,
+                                                    status='30min_srplusgwr_eu_200308'
+                                                    )
+# dtype = gdal.GDT_Float32
+#
+# if 'dtype' in kwargs:
+#     dtype = kwargs['dtype']
+#
+# write_raster_specs = {
+#             '30min': 2,
+#             '6min': 10,
+#             '30sec': 120,
+#             '15s': 240
+#         }
+#
+# rmulti = write_raster_specs['30min']
+# # Get number of cols and rows based on extent and conversion factor
+# no_cols = (aoi[0][1] - aoi[0][0]) * rmulti
+# no_rows = (aoi[1][1] - aoi[1][0]) * rmulti
+# cellsize = 1 / rmulti
+# leftdown = (aoi[0][0], aoi[1][0])  # lower-left corner of extent
+# grid_specs = (int(no_rows), int(no_cols), cellsize, leftdown)
+#
+# rows, cols, size, origin = grid_specs
+# originx, originy = origin
+#
+# driver = gdal.GetDriverByName('GTiff')
+# name = os.path.join(localdir, 'srplusgwr_eu_30min_200308.tif')
+# out_raster = driver.Create(name, cols, rows, 1, dtype)
+# out_raster.SetGeoTransform((originx, size, 0, originy, 0, size))
+# out_band = out_raster.GetRasterBand(1)
+# out_band.WriteArray(reliable_surfacerunoff_ar[::-1])
+# out_band.SetNoDataValue(-99.)
+# out_raster_srs = osr.SpatialReference()
+# out_raster_srs.ImportFromEPSG(4326)
+# out_raster.SetProjection(out_raster_srs.ExportToWkt())
+#
+# out_band.FlushCache()
+# out_raster.FlushCache()
+# outband = None
+# out_raster = None
