@@ -172,7 +172,7 @@ for t in taskdata_dict:
 if config:
     dconfig.pickle()
 
-#4. ---------------------------------------Run DryverDownscaling.run_task() > save_and_run_ts > run_ts for year=2003, month=08 -------------------
+#4.######################### Run DryverDownscaling.run_task() > save_and_run_ts > run_ts for year=2003, month=08 ###############################
 import warnings
 import argparse
 import glob
@@ -259,15 +259,14 @@ def get_30min_array(staticdata, dconfig, s, nan=-99):
 reliable_surfacerunoff_ar = get_30min_array(staticdata=staticdata, dconfig=dconfig,
                                             s=srplusgwr , nan=np.nan)
 
-#Save total runoff - not  in original code #############################################################################
 #Use DownScaleArray.py code
-DownScaleArray(dconfig,
-               dconfig.aoi,
-               write_raster_trigger=True).load_data(reliable_surfacerunoff_ar,
-                                                    status='30min_srplusgwr_eu_200308'
-                                                    )
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(reliable_surfacerunoff_ar,
+#                                                     status='30min_srplusgwr_eu_200308'
+#                                                     )
 
-#4.d.--------- Compute initial 15-sec runoff-based cell discharge ---------------------------------------------------
+#4.d.--------- Compute initial 15-sec runoff-based cell discharge ######################################################
 #runoffbased_celldis_15s_ar = self.get_runoff_based_celldis(reliable_surfacerunoff_ar, month=month, yr=year)
 kwargs['month'] = month
 kwargs['year'] = year
@@ -303,7 +302,7 @@ for idx, value in np.ndenumerate(inp):
         feat.Destroy()
 tmp_ds = ds
 
-#tmp_interp = interpolation_to_grid(tmp_ds, '6min')---------------
+#d.iii. tmp_interp = interpolation_to_grid(tmp_ds, '6min')--------------------------------------------------------------
 resolution = '6min'
 if resolution == '6min':
     width = (aoi[0][1] - aoi[0][0]) * 10
@@ -335,23 +334,23 @@ res = outr.ReadAsArray().copy()
 #tmp_interp=res
 res[res == -99] = np.nan
 
-DownScaleArray(dconfig,
-               dconfig.aoi,
-               write_raster_trigger=True).load_data(res,
-                                                    status='6min_srplusgwr_eu_200308'
-                                                    )
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(res,
+#                                                     status='6min_srplusgwr_eu_200308'
+#                                                     )
 tmp_smooth = res
 
-#d.iv. Disaggregate from 6 min to 15 s---------------------------------------------------------------------------
+#d.iv. Disaggregate from 6 min to 15 s----------------------------------------------------------------------------------
 #interpolated_smooth_15s = self.disaggregate(tmp_smooth, 24)
 a = np.repeat(tmp_smooth.data, 24, axis=0)
 interpolated_smooth_15s = np.repeat(a, 24, axis=1)
-DownScaleArray(dconfig,
-               dconfig.aoi,
-               write_raster_trigger=True).load_data(interpolated_smooth_15s,
-                                                    status='15s_srplusgwr_eu_200308'
-                                                    )
-# d.v. Remove 15-sec cells where original HydroSHEDS pixel area raster is NoData---------------------------
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(interpolated_smooth_15s,
+#                                                     status='15s_srplusgwr_eu_200308'
+#                                                     )
+# d.v. Remove 15-sec cells where original HydroSHEDS pixel area raster is NoData------------------------------------------
 #masked_diss_tmp_smooth = mask_wg_with_hydrosheds(interpolated_smooth_15s)
 hydrosheds_ar = staticdata['pixelarea']
 array = np.full(hydrosheds_ar.shape, np.nan)
@@ -369,13 +368,13 @@ wgdata = offset[:rowix, :colix]
 array[~np.isnan(hydrosheds_ar)] = wgdata[~np.isnan(hydrosheds_ar)]
 masked_diss_tmp_smooth = array
 
-DownScaleArray(dconfig,
-               dconfig.aoi,
-               write_raster_trigger=True).load_data(masked_diss_tmp_smooth,
-                                                    status='15s_srplusgwr_eu_200308_masked'
-                                                    )
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(masked_diss_tmp_smooth,
+#                                                     status='15s_srplusgwr_eu_200308_masked'
+#                                                     )
 
-# d.vi. Compute runoff-based discharge in the cell (i.e. convert runoff from mm to m3/s)--------------------------------------
+# d.vi. Compute runoff-based discharge in the cell (i.e. convert runoff from mm to m3/s)--------------------------------
 #conv = self.convert_runoff_to_dis(masked_diss_tmp_smooth, **kwargs)
 if dconfig.mode == 'ts':
     division_term = (daysinmonth_dict[kwargs['month']] * 24 * 60 * 60)
@@ -383,13 +382,13 @@ area = staticdata['pixelarea']
 data = (masked_diss_tmp_smooth * area * 1000 / division_term)
 conv=data
 
-DownScaleArray(dconfig,
-               dconfig.aoi,
-               write_raster_trigger=True).load_data(conv,
-                                                    status='15s_srplusgwr_eu_200308_masked_m3s'
-                                                    )
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(conv,
+#                                                     status='15s_srplusgwr_eu_200308_masked_m3s'
+#                                                     )
 
-# d.vii. Correct runoff-based discharge for changes in storage of global lakes and reservoirs
+# d.vii. Correct runoff-based discharge for changes in storage of global lakes and reservoirs---------------------------
 # (i.e., redistribute volume changes from global water bodies' pour points to all cells intersecting with
 # that global lake)
 if dconfig.correct_global_lakes:
@@ -400,10 +399,10 @@ if dconfig.correct_global_lakes:
                                                   s=taskdata_dict['2003_8']['globallakes_addition'],
                                                   nan=float(0))
 
-    DownScaleArray(dconfig,
-                   dconfig.aoi,
-                   write_raster_trigger=True).load_data(globallakes_addition_15s_ar,
-                                                        status='30min_globallakes_addition_eu_200308_masked_km3mo')
+    # DownScaleArray(dconfig,
+    #                dconfig.aoi,
+    #                write_raster_trigger=True).load_data(globallakes_addition_15s_ar,
+    #                                                     status='30min_globallakes_addition_eu_200308_masked_km3mo')
 
 
     # Disaggregate global lakes redistribution values from 30 min pd.Series in km3/mo to 15 arc arrays in m3/s
@@ -428,10 +427,10 @@ if dconfig.correct_global_lakes:
 
     globallakes_addition_ar_15s_m3s = disaggregate_ar(lake_redis_m3s,factor=120)
 
-    DownScaleArray(dconfig,
-                   dconfig.aoi,
-                   write_raster_trigger=True).load_data(globallakes_addition_ar_15s_m3s,
-                                                        status='15s_globallakes_addition_eu_200308_masked_m3s')
+    # DownScaleArray(dconfig,
+    #                dconfig.aoi,
+    #                write_raster_trigger=True).load_data(globallakes_addition_ar_15s_m3s,
+    #                                                     status='15s_globallakes_addition_eu_200308_masked_m3s')
 
     # Redistribute storage change based on fraction of lakes in LR cell intersecting with HR cell
     conv = conv - (globallakes_fraction_15s * globallakes_addition_ar_15s_m3s)
@@ -441,9 +440,340 @@ if dconfig.correct_global_lakes:
         warnings.filterwarnings('ignore')
         conv = np.where(conv < 0, 0, conv)
 
-    DownScaleArray(dconfig,
-                   dconfig.aoi,
-                   write_raster_trigger=True).load_data(conv,
-                                                        status='15s_srplusgwr_eu_200308_masked_m3s_lkrescor')
+    runoffbased_celldis_15s_ar = conv
 
-# 4.e. Compute initial correction values in each 30-min cell  ---------------------------------------------------------------
+    # DownScaleArray(dconfig,
+    #                dconfig.aoi,
+    #                write_raster_trigger=True).load_data(runoffbased_celldis_15s_ar,
+    #                                                     status='15s_srplusgwr_eu_200308_masked_m3s_lkrescor')
+
+# 4.e. Compute initial correction values in each 30-min cell ##########################################################################
+netdis_30min_series = taskdata_dict['2003_8']['netdis_30min_series']
+netdis_30min_series.name = 'variable'
+
+# correction_grid_30min = self.calculate_lr_correctionvalues(runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
+#                                                            netdis_30min_series=netdis_30min_series,
+#                                                            month=month, yr=year)
+# e.i. aggregate-sum 15-sec runoff-based cell discharge to 30-min runoff-based cell discharge (m3/s)--------------------
+def aggsum(what, factor, zeroremove=True):
+    what = what.copy()
+    what[np.isnan(what)] = 0
+    result = np.einsum('ijkl->ik',  #Sum over the j and l axes, resulting in a 2D array with shape (i, k).
+                       what.reshape(what.shape[0] // factor, factor, -1, factor)) #Reshape from (17280, 22800) to (144, 120, 190, 120) (ijkl)
+    if zeroremove:
+        result[result == 0] = np.nan
+    return result
+
+runoffbased_celldis_30min_ar = aggsum(what=runoffbased_celldis_15s_ar, factor=120, zeroremove=False)
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(runoffbased_celldis_30min_ar,
+#                                                     status='30min_srplusgwr_eu_200308_masked_m3s_lkrescor_reaggregated')
+
+#e.ii. Convert 30-min net runoff to m3/s (from km3/month if self.dconfig.mode == 'ts', else from km3/yr)----------------
+if dconfig.mode == 'ts':
+    netdis_30min_m3s_ar = ((get_30min_array(staticdata=staticdata,dconfig=dconfig,
+                                            s=netdis_30min_series, nan=np.nan)/
+                            (daysinmonth_dict[kwargs['month']] * 24 * 60 * 60)) * 1000000000)
+
+    # DownScaleArray(dconfig,
+    #                dconfig.aoi,
+    #                write_raster_trigger=True).load_data(netdis_30min_m3s_ar,
+    #                                                     status='30min_netdis_eu_200308_m3s')
+
+#e.iii. Control for proportion of actual land (vs sea) in 30-min cell---------------------------------------------------
+landratio_corr = staticdata['landratio_corr']
+netdis_30min_m3s_ar *= landratio_corr
+
+#e.iv. Fill NAs in net runoff array with values from aggregated runoff-based cell discharge-----------------------------
+def stack(upper, lower):
+    """
+    Fill nan values in upper with values of lower
+
+    Parameters
+    ----------
+    upper : np.array
+    lower : np.array
+
+    Returns
+    -------
+    np.array
+    """
+    tobefilled = np.isnan(upper)
+    new = upper
+    new[tobefilled] = lower[tobefilled]
+    return new
+
+netdis_30min_m3s_ar = stack(upper=netdis_30min_m3s_ar, lower=runoffbased_celldis_30min_ar)
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(netdis_30min_m3s_ar,
+#                                                     status='30min_netdis_eu_200308_m3s_filled')
+
+#e.v. Compute correction value stemming from each cell (to be routed downstream)----------------------------------------
+dif_dis_30min = netdis_30min_m3s_ar - runoffbased_celldis_30min_ar
+correction_grid_30min = dif_dis_30min
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(dif_dis_30min,
+#                                                     status='30min_difdis_eu_200308_m3s')
+
+#f. Compute what proportion of the 30-min correction value should apply to each 15-sec cell############################################
+#correction_weights_15s = self.get_corrweight(runoffbased_celldis_15s_ar)
+
+#f.i. Compute actual flow-accumulated discharge/Flow-accumulate HR runoff-based cell discharge.-------------------------
+def flow_acc(staticdata, dis15s):
+    # Get/run flow accumulation
+    newar = staticdata['flowacc'].get(dis15s)
+    newar[np.isnan(staticdata['pixelarea'])] = np.nan
+    return newar
+
+runoffbased_dis_15s = flow_acc(staticdata=staticdata, dis15s=runoffbased_celldis_15s_ar)
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(runoffbased_dis_15s,
+#                                                     status='15s_srplusgwr_eu_200308_masked_m3s_lkrescor_acc')
+
+#f.ii. Compute sum of discharge from all HR cells in each LR cell-------------------------------------------------------
+dis_fg_sum_30min = aggsum(runoffbased_dis_15s, 120, zeroremove=False)
+
+# Replace 0s with 1 to avoid dividing by 0, but won't influence outcome (dividing 0 by 1)
+dis_fg_sum_30min[dis_fg_sum_30min == 0] = 1
+
+#f.iii. Compute proportion of discharge from LR cell contained in each HR cell------------------------------------------
+dis_corr_weight = runoffbased_dis_15s / disaggregate_ar(dis_fg_sum_30min, 120)
+correction_weights_15s = dis_corr_weight
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(dis_corr_weight,
+#                                                     status='15s_discorrweight_eu_200308')
+
+#g. Change correction values in 30-min cells to apply an even greater proportion of the correction on large rivers##########################
+# (if large_river_corr is True)
+#g.i. Apply correct_dis()-------------------------------------------------------------------------------------------
+# corrected_dis_15s = self.correct_dis(correction_grid_30min=correction_grid_30min,
+#                                      correction_weights_15s=correction_weights_15s,
+#                                      runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
+#                                      month=month)
+# Apply correction weights to correction grid
+celldis_correctionvalue_15s = disaggregate_ar(correction_grid_30min.data, 120) * correction_weights_15s.data
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(celldis_correctionvalue_15s,
+#                                                     status='15s_celldis_correctionvalue_raw_eu_200308')
+
+if dconfig.correction_threshold is not None:
+    ctar = staticdata['upstream_pixelarea'] * dconfig.correction_threshold
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        # Create a grid to know which cells have negative correction
+        corr_sign = np.where(celldis_correctionvalue_15s < 0, -1, 1)
+    # Make sure the absolute value of the correction weights remain under the correction_threshold
+    celldis_correctionvalue_15s = np.minimum(np.abs(celldis_correctionvalue_15s), ctar)
+    # Re-assign correct sign to each correction weight
+    celldis_correctionvalue_15s = celldis_correctionvalue_15s * corr_sign
+    del corr_sign
+
+    # DownScaleArray(dconfig,
+    #                dconfig.aoi,
+    #                write_raster_trigger=True).load_data(ctar,
+    #                                                     status='15s_correction_threshold_eu_200308')
+    # DownScaleArray(dconfig,
+    #                dconfig.aoi,
+    #                write_raster_trigger=True).load_data(celldis_correctionvalue_15s,
+    #                                                     status='15s_celldis_correctionvalue_capped_eu_200308')
+
+# Apply correction values to flow-accumulated runoff-based discharge
+corrected_celldis = runoffbased_celldis_15s_ar + celldis_correctionvalue_15s
+
+# Accumulate corrected cell discharge to yield actual dischare
+corrected_dis = flow_acc(staticdata=staticdata, dis15s=corrected_celldis)
+
+# manual correction of negative discharge
+with warnings.catch_warnings():
+    warnings.filterwarnings('ignore')
+    corrected_dis[corrected_dis < 0] = 0
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(corrected_dis,
+#                                                     status='15s_corrected_dis_ini_eu_200308')
+corrected_dis_15s = corrected_dis
+
+#g.ii.	Apply get_largerivers_correction_grid():-----------------------------------------------------------------------
+wg_dis_30min = taskdata_dict['2003_8']['dis']
+wg_dis_30min.name = 'variable'
+precorrected_dis = corrected_dis_15s
+# correction_grid_30min = self.get_largerivers_correction_grid(
+#     wgdis_series_30min=wg_dis_30min,
+#     correction_grid_30min=correction_grid_30min,
+#     precorrected_dis=corrected_dis_15s,
+#     month=month)
+# del corrected_dis_15s
+
+flowdir = get_30min_array(staticdata=staticdata,dconfig=dconfig, s='flowdir')
+largerivers_mask_30min = staticdata['largerivers_mask']
+
+# Convert discharge to m3/s (from km3/month if mode==ts or km3/yr if mode==long-term average
+if dconfig.mode == 'ts':
+    wgdis_30min_m3s = (get_30min_array(staticdata=staticdata,dconfig=dconfig, s=wg_dis_30min, nan=np.nan)/
+                       (daysinmonth_dict[kwargs['month']] * 24 * 60* 60)) * 1000000000
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(wgdis_30min_m3s,
+#                                                     status='30min_WGdis_eu_200308_m3s')
+
+# Compute net discharge in large river 30 min cells from WG discharge data
+wgdis_largerivers_30min = wgdis_30min_m3s * largerivers_mask_30min
+net_wgdis_largerivers_30min = (wgdis_largerivers_30min
+                               - get_inflow_sum(in_valuegrid=wgdis_largerivers_30min,
+                                                in_flowdir=flowdir)
+                               )
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(net_wgdis_largerivers_30min,
+#                                                     status='30min_net_WGdis_largerivers_eu_200308_m3s')
+
+# Compute maximum 15 sec accumulated pre-corrected discharge in each large river 30 min cell
+cell_pourpixel = staticdata['cell_pourpixel']
+precorrected_dis = precorrected_dis * cell_pourpixel
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(precorrected_dis,
+#                                                     status='15s_precorrected_dis_prpix30min_eu_200308_m3s')
+
+def aggmax(what, factor):
+    """
+
+    :param what:
+    :type what:
+    :param factor:
+    :type factor:
+    :return:
+    :rtype:
+    """
+    b = np.split(what, what.shape[1] / factor, axis=1)
+    c = [x.reshape((-1, factor * factor)) for x in b]
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        d = [np.nanmax(x, axis=1) for x in c]
+    return np.column_stack(d)
+
+accumulated_precorrecteddis_30min = aggmax(precorrected_dis, 120)
+accumulated_precorrecteddis_30min_largerivers = accumulated_precorrecteddis_30min * largerivers_mask_30min
+
+# Compute net pre-corrected discharge in each large river 30 min cell
+net_precorrecteddis_largerivers_30min = (accumulated_precorrecteddis_30min_largerivers
+                                         - get_inflow_sum(in_valuegrid=accumulated_precorrecteddis_30min_largerivers,
+                                                          in_flowdir=flowdir)
+                                         )
+
+# Compute difference in net discharge from WG and from the accumulated corrected discharge
+net_dis_dif_largerivers_30min = net_wgdis_largerivers_30min - net_precorrecteddis_largerivers_30min
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(net_dis_dif_largerivers_30min,
+#                                                     status='30min_net_dis_dif_largerivers_eu_200308_m3s')
+
+# Transfer net_dis_dif from outside the large-rivers mask to large rivers downstream
+gapmask_30min = 1 - largerivers_mask_30min
+transfer_value_grid = gapmask_30min * net_dis_dif_largerivers_30min #This is equal to 0, aside where there are issues with the large river mask. This should be conducted at 15 arc-sec?
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(transfer_value_grid,
+#                                                     status='30min_transfer_value_largerivers_eu_200308_m3s')
+
+gap_flowdir_30min = flowdir * (1 - largerivers_mask_30min)
+gap_flowdir_30min[flowdir == -99] = -99
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(gap_flowdir_30min,
+#                                                     status='30min_flowdir_outsidelargerivers_eu')
+
+gap_flowacc = staticdata['30mingap_flowacc']
+transfer_accu_grid = FlowAccTT(in_flowdir=gap_flowdir_30min,
+                               in_static_flowacc=gap_flowacc,
+                               pad=True).get(
+    in_valuegrid=transfer_value_grid,
+    no_negative_accumulation=False)
+
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(transfer_accu_grid,
+#                                                     status='30min_transfer_grid_accu_eu')
+
+
+# Compute final net discharge correction value for large rivers
+new_diff_dis_30min = correction_grid_30min + ((net_dis_dif_largerivers_30min + transfer_accu_grid)
+                                              * largerivers_mask_30min)
+correction_grid_30min = new_diff_dis_30min
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(new_diff_dis_30min,
+#                                                     status='30min_newdifdis_eu_200308_m3s')
+
+#h. Shift correction values downstream at 30-min#######################################################################
+# if self.dconfig.corr_grid_shift:
+#     correction_grid_30min = self.shift_correction_grid(correction_grid_30min)
+# For each cell, partially shift the correction value to the next LR downstream cell
+# if the maximum HR upstream area in the next LR downstream cell is at least 0.9*maximum HR upstream area in the cell
+# This process is to focus correction even more strongly on large rivers
+corr_grid = ((correction_grid_30min * staticdata['keepgrid'])
+             + get_inflow_sum(in_valuegrid=(correction_grid_30min * staticdata['shiftgrid']),
+                              in_flowdir=flowdir)
+             )
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(corr_grid,
+#                                                     status='30min_newdifdis_eu_200308_m3s_shifted')
+correction_grid_30min = corr_grid
+
+#j. Apply correction at 15-sec and accumulate corrected net discharge downstream########################################
+# corrected_dis_15s = self.correct_dis(correction_grid_30min=correction_grid_30min,
+#                                      correction_weights_15s=correction_weights_15s,
+#                                      runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,
+#                                      correction_threshold=self.dconfig.correction_threshold,
+#                                      month=month)
+# Apply correction weights to correction grid
+###########################\
+############################## NEED TO CHANGE NAs in correction grid to 0s before running correct_dist again
+
+celldis_correctionvalue_15s = disaggregate_ar(correction_grid_30min.data, 120) * correction_weights_15s.data
+
+if dconfig.correction_threshold is not None:
+    ctar = staticdata['upstream_pixelarea'] * dconfig.correction_threshold
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore')
+        # Create a grid to know which cells have negative correction
+        corr_sign = np.where(celldis_correctionvalue_15s < 0, -1, 1)
+    # Make sure the absolute value of the correction weights remain under the correction_threshold
+    celldis_correctionvalue_15s = np.minimum(np.abs(celldis_correctionvalue_15s), ctar)
+    # Re-assign correct sign to each correction weight
+    celldis_correctionvalue_15s = celldis_correctionvalue_15s * corr_sign
+    del corr_sign
+
+# Apply correction values to flow-accumulated runoff-based discharge
+corrected_celldis = runoffbased_celldis_15s_ar + celldis_correctionvalue_15s
+
+# Accumulate corrected cell discharge to yield actual dischare
+corrected_dis = flow_acc(staticdata=staticdata, dis15s=corrected_celldis)
+
+# manual correction of negative discharge
+with warnings.catch_warnings():
+    warnings.filterwarnings('ignore')
+    corrected_dis[corrected_dis < 0] = 0
+
+DownScaleArray(dconfig,
+               dconfig.aoi,
+               write_raster_trigger=True).load_data(corrected_dis,
+                                                    status='15s_corrected_dis_final_eu_200308')

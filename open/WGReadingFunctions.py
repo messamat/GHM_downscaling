@@ -278,13 +278,13 @@ def read_unf_file(filepath, arcid_folderpath, **kwargs):
     }
 
     var_dict = {
-        'G_RIVER_AVAIL_': {'var_name': 'dis',
+        'G_RIVER_AVAIL_': {'var_name': 'dis', #river discharge in grid cell, km³/month
                            'mass_unit': None,
                            'area_unit': None},
         'G_RIVER_AVAIL': {'var_name': 'dis',
                           'mass_unit': None,
                           'area_unit': None},
-        'G_RIVER_IN_UPSTREAM_': {'var_name': 'dis_upstream',
+        'G_RIVER_IN_UPSTREAM_': {'var_name': 'dis_upstream', #river discharge in upstream grid cell, km³/month
                                  'mass_unit': None,
                                  'area_unit': None},
         'G_PRECIPITATION_': {'var_name': 'pr',
@@ -320,7 +320,7 @@ def read_unf_file(filepath, arcid_folderpath, **kwargs):
         'G_SNOW_FALL_': {'var_name': 'psnow',
                          'mass_unit': None,
                          'area_unit': None},
-        'G_CELL_RUNOFF_mm_': {'var_name': 'net_cell_runoff',
+        'G_CELL_RUNOFF_mm_': {'var_name': 'net_cell_runoff', #total cell runoff (outflow of lakes/wetlands); actual inflow into stream
                               'mass_unit': 'mm',
                               'area_unit': 'm2'},
         'G_CELL_RUNOFF_': {'var_name': 'net_cell_runoff',
