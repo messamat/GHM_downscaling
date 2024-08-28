@@ -271,6 +271,7 @@ class DryverDownscaling:
             correction_grid_30min = self.smooth_correction_grid(correction_grid_30min)
 
         #Apply correction at 15-sec and accumulate corrected net discharge downstream ----------------------------------
+        correction_grid_30min[np.isnan(correction_grid_30min)] = 0
         corrected_dis_15s = self.correct_dis(correction_grid_30min=correction_grid_30min,
                                              correction_weights_15s=correction_weights_15s,
                                              runoffbased_celldis_15s_ar=runoffbased_celldis_15s_ar,

@@ -745,9 +745,7 @@ correction_grid_30min = corr_grid
 #                                      correction_threshold=self.dconfig.correction_threshold,
 #                                      month=month)
 # Apply correction weights to correction grid
-###########################\
-############################## NEED TO CHANGE NAs in correction grid to 0s before running correct_dist again
-
+correction_grid_30min[np.isnan(correction_grid_30min)] = 0
 celldis_correctionvalue_15s = disaggregate_ar(correction_grid_30min.data, 120) * correction_weights_15s.data
 
 if dconfig.correction_threshold is not None:
@@ -773,7 +771,7 @@ with warnings.catch_warnings():
     warnings.filterwarnings('ignore')
     corrected_dis[corrected_dis < 0] = 0
 
-DownScaleArray(dconfig,
-               dconfig.aoi,
-               write_raster_trigger=True).load_data(corrected_dis,
-                                                    status='15s_corrected_dis_final_eu_200308')
+# DownScaleArray(dconfig,
+#                dconfig.aoi,
+#                write_raster_trigger=True).load_data(corrected_dis,
+#                                                     status='15s_corrected_dis_final_eu_200308')
