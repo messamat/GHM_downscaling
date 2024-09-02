@@ -22,6 +22,7 @@ class PreProcessing:
       reservoir, the value correspond to the fraction of the area of all global lakes or reservoirs in the LR grid cell
       contained in the HR grid cell. For example, if an LR grid cell is completely contained within a lake or reservoir,
       then allHR grid cells within would have a value of 1/14400)
+    - basins_lev12_15s.tif (rasterfile with a unique level 12 HydroBASIN ID in HydroSheds grid cells)
 
     The following files / grids are produced in outputdir:
 
@@ -35,6 +36,7 @@ class PreProcessing:
     - continents_cellpourpoint_15s.tif (HR grid with 1 where the HR grid cell has the maximum upstream area per LR grid
       cell),
     - continents_pixarea_15s.tif (HR grid with area of HR grid cells),
+    - continents_lev12_15s.tif (HR grid with level 12 HydroBASIN ID)
     - pixareafraction_glolakres_15s.tif (rasterfile with values in HR grid cells which are covered by a global lake or
       reservoir, the value correspond to the fraction of the area of all global lakes or reservoirs in the LR grid cell
       contained in the HR grid cell. For example, if an LR grid cell is completely contained within a lake or reservoir,
@@ -51,6 +53,7 @@ class PreProcessing:
         flowdir_30min = os.path.join(setup_folder, 'flowdir_30min.tif')
         area_flowacc_30min = os.path.join(setup_folder, 'orgDDM30area.tif')
         globallakes_fraction_15s = os.path.join(setup_folder, 'pixareafraction_glolakres_15s.tif')
+        basins_lev12_15s = os.path.join(setup_folder, 'basins_lev12_15s.tif')
         landratio = r'landratio_correction.tif'
         stations = os.path.join(setup_folder, 'stations_europe.geojson')
 
@@ -91,8 +94,8 @@ class PreProcessing:
 
         # compute HR pourpoints of LR cells and clip HR pixel area and HR global lake fractions to
         # union of continents in continentlist
-        get_continental_hsgrids(continentlist, upa_path, pixarea_path, globallakes_fraction_15s, outputdir,
-                                overwrite)
+        get_continental_hsgrids(continentlist, upa_path, pixarea_path, globallakes_fraction_15s, basins_lev12_15s,
+                                outputdir, overwrite)
 
         #Copy 'landratio_correction.tif' to setup folder
         copygrids([landratio], setup_folder, outputdir, overwrite)
@@ -115,7 +118,7 @@ if __name__ == '__main__':
 
     outputdir = os.path.join(datdir, "hs_reproduced")
     tmpdir = os.path.join(datdir, "hs_reproduced", "tmp")
-    continentlist = ['af', 'ar', 'as', 'au', 'eu', 'na', 'sa', 'si']
+    continentlist = ['eu'] #['af', 'ar', 'as', 'au', 'eu', 'na', 'sa', 'si']
     overwrite = False
     process_stations = False
 

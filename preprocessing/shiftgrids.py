@@ -3,7 +3,7 @@ import shutil
 from DownstreamGrid import get_downstream_grid
 import arcpy
 from arcpy import env
-from arcpy.sa import Raster, RasterCalculator, Con, IsNull, Aggregate, FlowAccumulation
+from arcpy.sa import *
 arcpy.CheckOutExtension("Spatial")
 
 
