@@ -131,17 +131,17 @@ class HydroSHEDSData:
         l12 = gdal.Open(self.l12fp)
         navalue = l12.GetRasterBand(1).GetNoDataValue()
         l12ar = l12.ReadAsArray()
-        l12arix = np.arange(l12ar.size, dtype=np.int32)
-        l12flat = l12ar.flatten()
+        l12arix = np.arange(l12ar.size, dtype=np.int32) #Create an index of the order of all pixels
+        l12flat = l12ar.flatten() #Convert two-dimension array to single dimension
         del l12ar
 
-        l12arix = l12arix[~(l12flat == navalue)]
+        l12arix = l12arix[~(l12flat == navalue)] #Remove NAs
         l12flat = l12flat[~(l12flat == navalue)]
-        sortindex = np.argsort(l12flat).astype(np.int32)
-        l12arix = l12arix[sortindex]
-        l12flat = l12flat[sortindex]
-        splitar = np.where(np.diff(l12flat))[0] + 1
-        return np.split(l12arix, splitar)
+        sortindex = np.argsort(l12flat).astype(np.int32) #Indices of the basin IDs for ordering them
+        l12arix = l12arix[sortindex] #Order pixel indices by basin IDs
+        l12flat = l12flat[sortindex] #Order basin IDs
+        splitar = np.where(np.diff(l12flat))[0] + 1 #Get index of the start of sequences of basin IDs
+        return np.split(l12arix, splitar) #Split the index array by basin IDs
 
     def read_pixarea(self):
         pixareapath = os.path.join(self.config.hydrosheds_path,
