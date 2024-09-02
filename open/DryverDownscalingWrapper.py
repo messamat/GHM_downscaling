@@ -100,7 +100,8 @@ class DryverDownscalingWrapper:
                     'upstream_pixelarea': self.hydrosheds.upa,
                     'hydrosheds_geotrans': self.hydrosheds.hydrosheds_geotrans,
                     'pixelarea': self.hydrosheds.pixarea,
-                    'globallakes_fraction_15s': self.hydrosheds.globallakes_fraction_15s_ar
+                    'globallakes_fraction_15s': self.hydrosheds.globallakes_fraction_15s_ar,
+                    'l12harmdata': self.hydrosheds.l12harmdata
                 }
                 if self.dconfig.l12harm:
                     staticdata['l12harmdata'] = self.hydrosheds.l12harmdata
