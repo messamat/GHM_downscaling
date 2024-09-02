@@ -50,7 +50,7 @@ dconfig = DownscalingConfig(wg_in_path=wginpath,
                             runoff_src='srplusgwr',
                             correct_global_lakes=True,
                             sr_smoothing=False,
-                            l12harm=False,
+                            l12harm=True,
                             dis_corr=True,
                             large_river_corr=True,
                             corr_grid_shift=True,
@@ -121,8 +121,9 @@ staticdata = {
             'upstream_pixelarea': hydrosheds.upa,
             'hydrosheds_geotrans': hydrosheds.hydrosheds_geotrans,
             'pixelarea': hydrosheds.pixarea,
-            'globallakes_fraction_15s': hydrosheds.globallakes_fraction_15s_ar
-        }
+            'globallakes_fraction_15s': hydrosheds.globallakes_fraction_15s_ar,
+            'l12harmdata': hydrosheds.l12harmdata
+}
 
 with open(os.path.join(dconfig.temp_dir, 'staticdata.pickle'), 'wb') as f:
     pickle.dump(staticdata, f)
@@ -351,28 +352,49 @@ interpolated_smooth_15s = np.repeat(a, 24, axis=1)
 #                                                     status='15s_srplusgwr_eu_200308'
 #                                                     )
 # d.v. Remove 15-sec cells where original HydroSHEDS pixel area raster is NoData------------------------------------------
-#masked_diss_tmp_smooth = mask_wg_with_hydrosheds(interpolated_smooth_15s)
-hydrosheds_ar = staticdata['pixelarea']
-array = np.full(hydrosheds_ar.shape, np.nan)
-hydrosheds_geotrans = staticdata['hydrosheds_geotrans']
-coloffset = int(round(dconfig.aoi[0][0] - hydrosheds_geotrans[0]) // 0.5 * 120 * -1)
-rowoffset = int(round(dconfig.aoi[1][1] - hydrosheds_geotrans[3]) // 0.5 * 120)
-offset = interpolated_smooth_15s[rowoffset:, coloffset:]
-rowix = array.shape[0] - offset.shape[0]
-colix = array.shape[1] - offset.shape[1]
-if rowix == 0:
-    rowix = array.shape[0]
-if colix == 0:
-    colix = array.shape[1]
-wgdata = offset[:rowix, :colix]
-array[~np.isnan(hydrosheds_ar)] = wgdata[~np.isnan(hydrosheds_ar)]
-masked_diss_tmp_smooth = array
+# if self.dconfig.l12harm:
+#     # Correct for l12 catchment — not implemented
+#     masked_diss_tmp_smooth = self.harmonize_l12_hydrosheds(interpolated_smooth_15s)
+# else:
+#     # Remove 15-sec cells where original HydroSHEDS pixel area raster is NoData
+#     masked_diss_tmp_smooth = self.mask_wg_with_hydrosheds(interpolated_smooth_15s)
+# del interpolated_smooth_15s
+if dconfig.l12harm:
+    oldflat = interpolated_smooth_15s.flatten()
+    newflat = oldflat.copy()
+    newflat[:] = np.nan
+    for basin in staticdata['l12harmdata']:
+        newflat[basin] = np.mean(oldflat[basin])
+    masked_diss_tmp_smooth = newflat.reshape(interpolated_smooth_15s.shape)
+
+    # DownScaleArray(dconfig,
+    #                dconfig.aoi,
+    #                write_raster_trigger=True).load_data(masked_diss_tmp_smooth,
+    #                                                     status='15s_srplusgwr_eu_200308_l12harm'
+    #                                                     )
+else:
+    hydrosheds_ar = staticdata['pixelarea']
+    array = np.full(hydrosheds_ar.shape, np.nan)
+    hydrosheds_geotrans = staticdata['hydrosheds_geotrans']
+    coloffset = int(round(dconfig.aoi[0][0] - hydrosheds_geotrans[0]) // 0.5 * 120 * -1)
+    rowoffset = int(round(dconfig.aoi[1][1] - hydrosheds_geotrans[3]) // 0.5 * 120)
+    offset = interpolated_smooth_15s[rowoffset:, coloffset:]
+    rowix = array.shape[0] - offset.shape[0]
+    colix = array.shape[1] - offset.shape[1]
+    if rowix == 0:
+        rowix = array.shape[0]
+    if colix == 0:
+        colix = array.shape[1]
+    wgdata = offset[:rowix, :colix]
+    array[~np.isnan(hydrosheds_ar)] = wgdata[~np.isnan(hydrosheds_ar)]
+    masked_diss_tmp_smooth = array
 
 # DownScaleArray(dconfig,
 #                dconfig.aoi,
 #                write_raster_trigger=True).load_data(masked_diss_tmp_smooth,
 #                                                     status='15s_srplusgwr_eu_200308_masked'
 #                                                     )
+#
 
 # d.vi. Compute runoff-based discharge in the cell (i.e. convert runoff from mm to m3/s)--------------------------------
 #conv = self.convert_runoff_to_dis(masked_diss_tmp_smooth, **kwargs)
