@@ -272,10 +272,13 @@ def read_unf_file(filepath, arcid_folderpath, **kwargs):
         12: 31
     }
 
-    landmask_ref = {
-        66896: 'slm', #number of cells in DDM30 routing network landmask
-        67420: 'wlm' #number of cells in CRU landmask (the WG climate forcing data landmask)
-    }
+    if 'landmask_ref' not in kwargs.keys():  ########################################################################DOUBLE CHECK HOW TO DEAL WITH IT
+        # By default, set landmask_ref to WG2 characteristics
+        landmask_ref = {
+            180721: 'slm'  # number of cells in DDM5 routing network landmask
+            # 66896: 'slm', #number of cells in DDM30 routing network landmask
+            # 67420: 'wlm' #number of cells in CRU landmask (the WG climate forcing data landmask)
+        }
 
     var_dict = {
         'G_RIVER_AVAIL_': {'var_name': 'dis', #river discharge in grid cell, km³/month
@@ -437,11 +440,14 @@ def read_unf_file(filepath, arcid_folderpath, **kwargs):
     unf_instance.nrows = int(data.shape[0] / unf_instance.ncols) #wg data are unidimensional
     unf_instance.landmask = landmask_ref[unf_instance.nrows]
 
-    # get arcids and cast to two-dimensional data.frame
+    # get arcids and cast to two-dimensional data.frame ########################################################################DOUBLE CHECK HOW TO DEAL WITH IT
+    # arcid_ref = pd.read_csv(os.path.join(arcid_folderpath,
+    #                                      landmask_ref[unf_instance.nrows] +
+    #                                      '_arcid_gcrc.txt'),
+    #                         sep='\t')
     arcid_ref = pd.read_csv(os.path.join(arcid_folderpath,
                                          landmask_ref[unf_instance.nrows] +
-                                         '_arcid_gcrc.txt'),
-                            sep='\t')
+                                         '_arcid.txt'))
     data = pd.DataFrame(data.reshape((unf_instance.nrows, unf_instance.ncols)),
                         columns=range(1, 1 + unf_instance.ncols))
 
@@ -450,10 +456,10 @@ def read_unf_file(filepath, arcid_folderpath, **kwargs):
         data = data.iloc[:, :days_in_month[data_attributes['month']]]
 
     #Add ArcID column
-    data = data.assign(arcid=arcid_ref.loc[:, 'ArcID'])
+    data = data.assign(arcid=arcid_ref.loc[:, 'arcid'])
 
     #If dimension does not match corresponding landmask (DDM30 or CRU), remove NAs
-    if unf_instance.nrows not in landmask_ref.values():
+    if unf_instance.nrows not in landmask_ref.keys():
         data.dropna(inplace=True)
 
     #Identify variable name
