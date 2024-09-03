@@ -13,18 +13,19 @@ from open.helper import get_continental_extent
 
 rootdir = os.path.dirname(os.path.abspath(
     getsourcefile(lambda: 0))).split('\\src')[0]
-localdir = os.path.join(rootdir, 'results', 'downscaling_output_{}'.format(datetime.today().strftime('%Y%m%d')))
+datadir = os.path.join(rootdir, 'data_wg3')
+localdir = os.path.join(rootdir, 'results_wg3', 'downscaling_output_{}'.format(datetime.today().strftime('%Y%m%d')))
 if not os.path.exists(localdir):
     os.mkdir(localdir)
 
 continentlist = ['eu']  # ['eu', 'as', 'si']
 continent = ''.join(continentlist)
-wginpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data',
+wginpath = os.path.join(datadir, 'WG_inout_downscaling_data',
                         'wghm22e_v001', 'input')  # '/home/home1/gm/datasets/input_routing/wghm22e_v001/input/'
-wgpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data', '22eant')  # '/home/home8/dryver/22eant/'
-hydrosheds_folder = os.path.join(rootdir, 'data',
+wgpath = os.path.join(datadir, 'WG_inout_downscaling_data', '22eant')  # '/home/home8/dryver/22eant/'
+hydrosheds_folder = os.path.join(datadir,
                                  'hs_reproduced')  # '/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
-setup_folder = os.path.join(rootdir, 'data', 'setupdata_for_downscaling')
+setup_folder = os.path.join(datadir, 'setupdata_for_downscaling')
 stations_path = os.path.join(setup_folder, 'stations.csv')
 constants_folder = os.path.join(rootdir, 'src', 'GHM_downscaling', 'constants')
 pois = pd.read_csv(stations_path)  # points of interest
@@ -89,7 +90,32 @@ mode = config.mode
 dconfig = config
 kwargs.update(config.kwargs)
 kwargs = kwargs
-wg = WGData(config=dconfig, **kwargs) #Get WaterGAP object instance (data and tools related to WG)
+
+#------------------------- RUN WGData --------------------------------------------------------------------------------
+#wg = WGData(config=dconfig, **kwargs) #Get WaterGAP object instance (data and tools related to WG)
+coords = pd.read_csv(os.path.join(config.constants_folder, 'xyarcid.csv'))
+read_variable_kwargs = {
+    "wg_simoutput_path": config.wg_out_path,
+    "timestep": 'month',
+    "startyear": config.startyear,
+    "endyear": config.endyear
+}
+
+
+if "area_of_interest" in kwargs:
+    aoi = kwargs['area_of_interest']
+    arcids = coords.set_index(["X", "Y"])
+    relative_arcids_df = arcids.sort_index().loc[(slice(aoi[0][0], aoi[0][1]),
+                                                  slice(aoi[1][0], aoi[1][1])), 'arcid']
+    relative_arcids = relative_arcids_df.values.tolist()
+    read_variable_kwargs['arcid_list'] = relative_arcids
+    coords = relative_arcids_df.reset_index().set_index('arcid')
+else:
+    aoi = ((-180., 180.), (-90., 90.))
+    coords = coords.set_index('arcid')
+
+
+
 hydrosheds = HydroSHEDSData(dconfig, **kwargs) #Get HydroSHEDS object instance (data and tools related to HydroSHEDS)
 
 wg.calc_continentalarea_to_landarea_conversion_factor() #Compute conversion factor to concentrate runoff from continental area contained in WG pixels to actual land area

@@ -8,7 +8,7 @@ from open.DryverDownscalingConfig import DownscalingConfig
 from open.helper import get_continental_extent
 
 @Timer(name='decorator', text='Downscaling takes currently {minutes:.0f} minutes')
-def main(rtype, rootdir, localdir):
+def main(rtype, rootdir, datadir, localdir):
     """
     Preparation and running script for Downscaling.
     Modify variables in this main function to configure the downscaling and corresponding paths.
@@ -26,11 +26,11 @@ def main(rtype, rootdir, localdir):
     """
     continentlist = ['eu']#['eu', 'as', 'si']
     continent = ''.join(continentlist)
-    wginpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data',
+    wginpath = os.path.join(datadir, 'WG_inout_downscaling_data',
                             'wghm22e_v001', 'input') #'/home/home1/gm/datasets/input_routing/wghm22e_v001/input/'
-    wgpath = os.path.join(rootdir, 'data', 'WG_inout_downscaling_data', '22eant') #'/home/home8/dryver/22eant/'
-    hydrosheds_folder = os.path.join(rootdir, 'data', 'hs_reproduced') #'/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
-    setup_folder = os.path.join(rootdir, 'data', 'setupdata_for_downscaling')
+    wgpath = os.path.join(datadir, 'WG_inout_downscaling_data', '22eant') #'/home/home8/dryver/22eant/'
+    hydrosheds_folder = os.path.join(datadir, 'hs_reproduced') #'/home/home1/gm/projects/DRYvER/03_data/12_downscalingdata_eu/'
+    setup_folder = os.path.join(datadir, 'setupdata_for_downscaling')
     stations_path = os.path.join(setup_folder, 'stations.csv')
     constants_folder = os.path.join(rootdir, 'src', 'GHM_downscaling', 'constants')
     pois = pd.read_csv(stations_path) #points of interest
@@ -86,11 +86,13 @@ def main(rtype, rootdir, localdir):
 if __name__ == '__main__':
     rootdir = os.path.dirname(os.path.abspath(
         getsourcefile(lambda:0))).split('\\src')[0]
-    localdir = os.path.join(rootdir, 'results', 'downscaling_output')
+    datadir = os.path.join(rootdir, 'data_wg3')
+    localdir = os.path.join(rootdir, 'results_wg3', 'downscaling_output')
     if not os.path.exists(localdir):
         os.mkdir(localdir)
     main(rtype='ipg80',
          rootdir=rootdir,
+         datadir=datadir,
          localdir=localdir
          )
     # run_prepared_downscaling(localdir, 2)

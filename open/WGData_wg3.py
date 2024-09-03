@@ -121,13 +121,13 @@ else:
 #                                 explain=False,
 #                                 files=['G_FLOWDIR.UNF2', 'GR.UNF2', 'GC.UNF2', 'GCONTFREQ.UNF0'],
 #                                 additional_files=False, cellarea=True)
-
 in_path=config.wg_in_path
 arcid_folderpath=config.constants_folder
 explain=False
 files=['G_FLOWDIR.UNF2', 'GR.UNF2', 'GC.UNF2', 'GCONTFREQ.UNF0']
 additional_files=False
 cellarea=True
+drop_greenland=False
 
 if files == 'all':
     relevant_files = [
@@ -171,176 +171,6 @@ if files == 'all':
         "G_TEXTURE.UNF1"]
 else:
     relevant_files = files
-
-inputdata = pd.DataFrame()
-# for inputfile in relevant_files:
-#     x = read_unf_file(os.path.join(in_path, inputfile),
-#                       arcid_folderpath=arcid_folderpath)
-inputfile='GCOUNTRY.UNF2'
-filepath = os.path.join(in_path, inputfile)
-
-days_in_month = {
-    1: 31,
-    2: 28,
-    3: 31,
-    4: 30,
-    5: 31,
-    6: 30,
-    7: 31,
-    8: 31,
-    9: 30,
-    10: 31,
-    11: 30,
-    12: 31
-}
-
-var_dict = {
-    'G_RIVER_AVAIL_': {'var_name': 'dis',  # river discharge in grid cell, km³/month
-                       'mass_unit': None,
-                       'area_unit': None},
-    'G_RIVER_AVAIL': {'var_name': 'dis',
-                      'mass_unit': None,
-                      'area_unit': None},
-    'G_RIVER_IN_UPSTREAM_': {'var_name': 'dis_upstream',  # river discharge in upstream grid cell, km³/month
-                             'mass_unit': None,
-                             'area_unit': None},
-    'G_PRECIPITATION_': {'var_name': 'pr',
-                         'mass_unit': 'kg',
-                         'area_unit': 'm2'},
-    'G_CONSISTENT_PRECIPITATION_km3_': {'var_name': 'precip',
-                                        'mass_unit': None,
-                                        'area_unit': None},
-    'G_FLOWDIR': {'var_name': 'flowdir',
-                  'mass_unit': None,
-                  'area_unit': None},
-    'G_BASINS': {'var_name': 'basins',
-                 'mass_unit': None,
-                 'area_unit': None},
-    'G_BASINS_2': {'var_name': 'basins2',
-                   'mass_unit': None,
-                   'area_unit': None},
-    'GPREC': {'var_name': 'precip',
-              'mass_unit': None,
-              'area_unit': None},
-    'G_TEMPERATURE_': {'var_name': 'temperature',
-                       'mass_unit': None,
-                       'area_unit': None},
-    'GTEMP': {'var_name': 'temperature',
-              'mass_unit': None,
-              'area_unit': None},
-    'G_SOIL_WATER_': {'var_name': 'rootmoist',
-                      'mass_unit': None,
-                      'area_unit': None},
-    'G_SNOW_WATER_EQUIV_': {'var_name': 'swe',
-                            'mass_unit': None,
-                            'area_unit': None},
-    'G_SNOW_FALL_': {'var_name': 'psnow',
-                     'mass_unit': None,
-                     'area_unit': None},
-    'G_CELL_RUNOFF_mm_': {'var_name': 'net_cell_runoff',
-                          # total cell runoff (outflow of lakes/wetlands); actual inflow into stream
-                          'mass_unit': 'mm',
-                          'area_unit': 'm2'},
-    'G_CELL_RUNOFF_': {'var_name': 'net_cell_runoff',
-                       'mass_unit': None,
-                       'area_unit': None},
-    'G_NETUSE_GW_m3_': {'var_name': 'na_g',
-                        'mass_unit': None,
-                        'area_unit': None},
-    'G_NETUSE_SW_m3_': {'var_name': 'na_s',
-                        'mass_unit': None,
-                        'area_unit': None},
-    'G_ACTUAL_WATER_CONSUMPTION_': {'var_name': 'actual_water_use',
-                                    'mass_unit': None,
-                                    'area_unit': None},
-    'G_INFLC.9': {'var_name': 'infl_arcid',
-                  'mass_unit': None,
-                  'area_unit': None},
-    'G_ACTUAL_NAS_': {'var_name': 'actual_use_sw',
-                      'mass_unit': None,
-                      'area_unit': None},
-    'G_ACTUAL_NAG_': {'var_name': 'actual_use_gw',
-                      'mass_unit': None,
-                      'area_unit': None},
-    'G_CELL_AET_': {'var_name': 'cell_aet',
-                    'mass_unit': 'mm',
-                    'area_unit': 'm2'},
-    'G_CELLAET_CONSUSE_km3_': {'var_name': 'cell_aet_consuse',
-                               'mass_unit': 'km3',
-                               'area_unit': 'contarea'},
-    'G_TOTAL_PET_': {'var_name': 'total_pet',
-                     'mass_unit': None,
-                     'area_unit': None},
-    'G_TOTAL_STORAGES_STARTEND_km3_': {'var_name': 'tws_startend',
-                                       'mass_unit': None,
-                                       'area_unit': None},
-    'G_SATIS_USE_': {'var_name': 'statisfied_use',
-                     'mass_unit': None,
-                     'area_unit': None},
-    'G_IRRIG_WITHDRAWAL_USE_HISTAREA_m3_': {'var_name': 'irrig_withdrawal_use',
-                                            'mass_unit': None,
-                                            'area_unit': None},
-    'G_IRRIG_CONS_USE_HISTAREA_m3_': {'var_name': 'irrig_cons_use',
-                                      'mass_unit': None,
-                                      'area_unit': None},
-    'G_FRACTRETURNGW_IRRIG': {'var_name': 'frig',
-                              'mass_unit': None,
-                              'area_unit': None},
-    'G_UNSAT_USE_': {'var_name': 'unsat_use',
-                     'mass_unit': None,
-                     'area_unit': None},
-    'G_GLO_WETL_EXTENT_km2_': {'var_name': 'glo_wetl_extent',
-                               'mass_unit': None,
-                               'area_unit': None},
-    'G_TOTAL_GW_RECHARGE_km3_': {'var_name': 'total_gw_recharge',
-                                 'mass_unit': None,
-                                 'area_unit': None},
-    'G_ALLOC_USE_': {'var_name': 'allocated_use',
-                     'mass_unit': None,
-                     'area_unit': None},
-    'G_SATIS_ALLOC_USE_IN_2NDCELL_': {'var_name': 'alloc_use_in2ndcell',
-                                      'mass_unit': None,
-                                      'area_unit': None},
-    'G_CONT_AREA_OUT_km2': {'var_name': 'contarea',
-                            'mass_unit': None,
-                            'area_unit': None},
-    'G_TOTAL_GW_RECHARGE_mm_': {'var_name': 'total_gw_recharge',
-                                'mass_unit': None,
-                                'area_unit': None},
-    'G_GW_RECHARGE_km3_': {'var_name': 'qr',
-                           'mass_unit': 'km3',
-                           'area_unit': None},
-    'G_GW_RECHARGE_mm_': {'var_name': 'qr',
-                          'mass_unit': 'mm',
-                          'area_unit': 'm2'},
-    'G_GWR_SURFACE_WATER_BODIES_km3_': {'var_name': 'qr',
-                                        'mass_unit': 'km3',
-                                        'area_unit': 'contarea'},
-    'G_TOTAL_STORAGES_mm_': {'var_name': 'tws',
-                             'mass_unit': 'mm',
-                             'area_unit': 'm2'},
-    'G_TOTAL_CONS_USE_GW_HISTAREA_m3_': {'var_name': 'cons_use_gw',
-                                         'mass_unit': None,
-                                         'area_unit': None},
-    'G_TOTAL_WITHDRAWAL_USE_GW_HISTAREA_m3_': {'var_name': 'withdrawal_gw',
-                                               'mass_unit': None,
-                                               'area_unit': None},
-    'G_LAND_AREA_FRACTIONS_': {'var_name': 'landareafr',
-                               'mass_unit': None,
-                               'area_unit': None},
-    'G_GROUND_WATER_STORAGE_mm_': {'var_name': 'gws',
-                                   'mass_unit': 'mm',
-                                   'area_unit': 'm2'},
-    'G_SOIL_WATER_STORAGE_mm_': {'var_name': 'sws',
-                                 'mass_unit': 'mm',
-                                 'area_unit': 'm2'},
-    'G_GLOWET': {'var_name': 'glwd_glowet',
-                 'mass_unit': None,
-                 'area_unit': None},
-    'G_LOCWET': {'var_name': 'glwd_locwet',
-                 'mass_unit': None,
-                 'area_unit': None}
-}
 
 class WaterGAPData(object):
     def __init__(self):
@@ -541,6 +371,337 @@ class Unf(WaterGAPData):  # UNF is the file format of WaterGAP input and output 
 
         return self
 
+#######################################################
+# x = read_unf_file(os.path.join(in_path, inputfile),
+#                   arcid_folderpath=arcid_folderpath)
+inputfile='G_FLOWDIR.UNF2'
+filepath=os.path.join(in_path, inputfile)
+
+days_in_month = {
+    1: 31,
+    2: 28,
+    3: 31,
+    4: 30,
+    5: 31,
+    6: 30,
+    7: 31,
+    8: 31,
+    9: 30,
+    10: 31,
+    11: 30,
+    12: 31
+}
+
+if 'landmask_ref' not in kwargs.keys(): ########################################################################DOUBLE CHECK HOW TO DEAL WITH IT
+    #By default, set landmask_ref to WG2 characteristics
+    landmask_ref = {
+        180721: 'slm' #number of cells in DDM5 routing network landmask
+        # 66896: 'slm', #number of cells in DDM30 routing network landmask
+        # 67420: 'wlm' #number of cells in CRU landmask (the WG climate forcing data landmask)
+    }
+
+var_dict = {
+    'G_RIVER_AVAIL_': {'var_name': 'dis', #river discharge in grid cell, km³/month
+                       'mass_unit': None,
+                       'area_unit': None},
+    'G_RIVER_AVAIL': {'var_name': 'dis',
+                      'mass_unit': None,
+                      'area_unit': None},
+    'G_RIVER_IN_UPSTREAM_': {'var_name': 'dis_upstream', #river discharge in upstream grid cell, km³/month
+                             'mass_unit': None,
+                             'area_unit': None},
+    'G_PRECIPITATION_': {'var_name': 'pr',
+                         'mass_unit': 'kg',
+                         'area_unit': 'm2'},
+    'G_CONSISTENT_PRECIPITATION_km3_': {'var_name': 'precip',
+                                        'mass_unit': None,
+                                        'area_unit': None},
+    'G_FLOWDIR': {'var_name': 'flowdir',
+                  'mass_unit': None,
+                  'area_unit': None},
+    'G_BASINS': {'var_name': 'basins',
+                 'mass_unit': None,
+                 'area_unit': None},
+    'G_BASINS_2': {'var_name': 'basins2',
+                   'mass_unit': None,
+                   'area_unit': None},
+    'GPREC': {'var_name': 'precip',
+              'mass_unit': None,
+              'area_unit': None},
+    'G_TEMPERATURE_': {'var_name': 'temperature',
+                       'mass_unit': None,
+                       'area_unit': None},
+    'GTEMP': {'var_name': 'temperature',
+              'mass_unit': None,
+              'area_unit': None},
+    'G_SOIL_WATER_': {'var_name': 'rootmoist',
+                      'mass_unit': None,
+                      'area_unit': None},
+    'G_SNOW_WATER_EQUIV_': {'var_name': 'swe',
+                            'mass_unit': None,
+                            'area_unit': None},
+    'G_SNOW_FALL_': {'var_name': 'psnow',
+                     'mass_unit': None,
+                     'area_unit': None},
+    'G_CELL_RUNOFF_mm_': {'var_name': 'net_cell_runoff', #total cell runoff (outflow of lakes/wetlands); actual inflow into stream
+                          'mass_unit': 'mm',
+                          'area_unit': 'm2'},
+    'G_CELL_RUNOFF_': {'var_name': 'net_cell_runoff',
+                       'mass_unit': None,
+                       'area_unit': None},
+    'G_NETUSE_GW_m3_': {'var_name': 'na_g',
+                        'mass_unit': None,
+                        'area_unit': None},
+    'G_NETUSE_SW_m3_': {'var_name': 'na_s',
+                        'mass_unit': None,
+                        'area_unit': None},
+    'G_ACTUAL_WATER_CONSUMPTION_': {'var_name': 'actual_water_use',
+                                    'mass_unit': None,
+                                    'area_unit': None},
+    'G_INFLC.9': {'var_name': 'infl_arcid',
+                  'mass_unit': None,
+                  'area_unit': None},
+    'G_ACTUAL_NAS_': {'var_name': 'actual_use_sw',
+                      'mass_unit': None,
+                      'area_unit': None},
+    'G_ACTUAL_NAG_': {'var_name': 'actual_use_gw',
+                      'mass_unit': None,
+                      'area_unit': None},
+    'G_CELL_AET_': {'var_name': 'cell_aet',
+                    'mass_unit': 'mm',
+                    'area_unit': 'm2'},
+    'G_CELLAET_CONSUSE_km3_': {'var_name': 'cell_aet_consuse',
+                               'mass_unit': 'km3',
+                               'area_unit': 'contarea'},
+    'G_TOTAL_PET_': {'var_name': 'total_pet',
+                     'mass_unit': None,
+                     'area_unit': None},
+    'G_TOTAL_STORAGES_STARTEND_km3_': {'var_name': 'tws_startend',
+                                       'mass_unit': None,
+                                       'area_unit': None},
+    'G_SATIS_USE_': {'var_name': 'statisfied_use',
+                     'mass_unit': None,
+                     'area_unit': None},
+    'G_IRRIG_WITHDRAWAL_USE_HISTAREA_m3_': {'var_name': 'irrig_withdrawal_use',
+                                            'mass_unit': None,
+                                            'area_unit': None},
+    'G_IRRIG_CONS_USE_HISTAREA_m3_': {'var_name': 'irrig_cons_use',
+                                      'mass_unit': None,
+                                      'area_unit': None},
+    'G_FRACTRETURNGW_IRRIG': {'var_name': 'frig',
+                              'mass_unit': None,
+                              'area_unit': None},
+    'G_UNSAT_USE_': {'var_name': 'unsat_use',
+                     'mass_unit': None,
+                     'area_unit': None},
+    'G_GLO_WETL_EXTENT_km2_': {'var_name': 'glo_wetl_extent',
+                               'mass_unit': None,
+                               'area_unit': None},
+    'G_TOTAL_GW_RECHARGE_km3_': {'var_name': 'total_gw_recharge',
+                                 'mass_unit': None,
+                                 'area_unit': None},
+    'G_ALLOC_USE_': {'var_name': 'allocated_use',
+                     'mass_unit': None,
+                     'area_unit': None},
+    'G_SATIS_ALLOC_USE_IN_2NDCELL_': {'var_name': 'alloc_use_in2ndcell',
+                                      'mass_unit': None,
+                                      'area_unit': None},
+    'G_CONT_AREA_OUT_km2': {'var_name': 'contarea',
+                            'mass_unit': None,
+                            'area_unit': None},
+    'G_TOTAL_GW_RECHARGE_mm_': {'var_name': 'total_gw_recharge',
+                                'mass_unit': None,
+                                'area_unit': None},
+    'G_GW_RECHARGE_km3_': {'var_name': 'qr',
+                           'mass_unit': 'km3',
+                           'area_unit': None},
+    'G_GW_RECHARGE_mm_': {'var_name': 'qr',
+                          'mass_unit': 'mm',
+                          'area_unit': 'm2'},
+    'G_GWR_SURFACE_WATER_BODIES_km3_': {'var_name': 'qr',
+                                        'mass_unit': 'km3',
+                                        'area_unit': 'contarea'},
+    'G_TOTAL_STORAGES_mm_': {'var_name': 'tws',
+                             'mass_unit': 'mm',
+                             'area_unit': 'm2'},
+    'G_TOTAL_CONS_USE_GW_HISTAREA_m3_': {'var_name': 'cons_use_gw',
+                                         'mass_unit': None,
+                                         'area_unit': None},
+    'G_TOTAL_WITHDRAWAL_USE_GW_HISTAREA_m3_': {'var_name': 'withdrawal_gw',
+                                               'mass_unit': None,
+                                               'area_unit': None},
+    'G_LAND_AREA_FRACTIONS_': {'var_name': 'landareafr',
+                               'mass_unit': None,
+                               'area_unit': None},
+    'G_GROUND_WATER_STORAGE_mm_': {'var_name': 'gws',
+                                   'mass_unit': 'mm',
+                                   'area_unit': 'm2'},
+    'G_SOIL_WATER_STORAGE_mm_': {'var_name': 'sws',
+                                 'mass_unit': 'mm',
+                                 'area_unit': 'm2'},
+    'G_GLOWET': {'var_name': 'glwd_glowet',
+                 'mass_unit': None,
+                 'area_unit': None},
+    'G_LOCWET': {'var_name': 'glwd_locwet',
+                 'mass_unit': None,
+                 'area_unit': None}
+}
+
+unf_instance = Unf(arcid_folderpath=arcid_folderpath)
+unf_instance.filename = os.path.split(filepath)[-1]
+if unf_instance.filename is None:
+    raise ValueError('No filename existing.')
+if len(unf_instance.filename) < 5:
+    raise ValueError('Filename is to short.')
+basename, data_attributes = unf_instance.analyze_filename()
+
+# read in data
+data = np.fromfile(filepath, dtype=unf_instance.dtype[0]).astype(unf_instance.dtype[1])
+unf_instance.nrows = int(data.shape[0] / unf_instance.ncols) #wg data are unidimensional
+unf_instance.landmask = landmask_ref[unf_instance.nrows]
+
+# get arcids and cast to two-dimensional data.frame ########################################################################DOUBLE CHECK HOW TO DEAL WITH IT
+arcid_ref = pd.read_csv(os.path.join(arcid_folderpath,
+                                     landmask_ref[unf_instance.nrows] +
+                                     '_arcid.txt'))
+data = pd.DataFrame(data.reshape((unf_instance.nrows, unf_instance.ncols)),
+                    columns=range(1, 1 + unf_instance.ncols))
+
+# restrict to days in month
+if unf_instance.ncols == 31:
+    data = data.iloc[:, :days_in_month[data_attributes['month']]]
+
+#Add ArcID column
+data = data.assign(arcid=arcid_ref.loc[:, 'arcid'])
+
+#If dimension does not match corresponding landmask (DDM30 or CRU), remove NAs
+if unf_instance.nrows not in landmask_ref.keys():
+    data.dropna(inplace=True)
+
+#Identify variable name
+try:
+    var_name = var_dict[basename]['var_name']
+except KeyError:
+    var_name = 'variable'
+
+#If time series data, format to long form
+if unf_instance.time_step == 'static':
+    data.columns = [var_name, 'arcid']
+    unf_instance.data = data
+elif unf_instance.time_step is not None:
+    data = pd.melt(data, id_vars=['arcid'],
+                   var_name=unf_instance.time_step,
+                   value_name=var_name)
+    if unf_instance.ncols == 31:
+        data = data.assign(month=int(data_attributes['month']))
+    data = data.assign(year=int(data_attributes['year']))
+
+    # dtype conversion
+    dtype_dict = {col[0]: col[1] for col in [('arcid', 'int32'),
+                                             ('month', 'int8'),
+                                             ('year', 'int16'),
+                                             ('day', 'int8')] if col[0] in data.columns}
+    data = data.astype(dtype_dict)
+
+    #Assign resulting data to unf_instance
+    unf_instance.data = data
+else:
+    raise ValueError('No timestep given')
+if var_name != 'variable':
+    unf_instance.vars = [var_dict[basename]['var_name']]
+    unf_instance.unit_area_reference = var_dict[basename]['area_unit']
+    unf_instance.unit_mass = var_dict[basename]['mass_unit']
+    unf_instance.unit = (var_dict[basename]['mass_unit'],
+                         var_dict[basename]['area_unit'],
+                         unf_instance.unit_time_reference)
+
+if 'select_arcids' in kwargs.keys():
+    unf_instance.select_arcids(kwargs['select_arcids'])
+
+
+
+#######
+inputdata = pd.DataFrame()
+#for inputfile in relevant_files:
+inputfile='GCOUNTRY.UNF2'
+x = read_unf_file(os.path.join(in_path, inputfile),
+                  arcid_folderpath=arcid_folderpath)
+if drop_greenland:
+    x = x.drop_greenland(constants_folder=arcid_folderpath)
+    x = x.data.iloc[:, 0]
+else:
+    x = x.data.set_index('arcid').iloc[:, 0]
+
+if inputfile in explanation.keys() and explain:
+    x.name = explanation[inputfile][0]
+else:
+    x.name = inputfile
+inputdata = inputdata.merge(x, left_index=True, right_index=True, how='outer')
+
+if additional_files:
+    cellarea = True
+    elev_range = True
+else:
+    if 'cellarea' in kwargs:
+        cellarea = kwargs['cellarea']
+    else:
+        cellarea = False
+
+    if 'elev_range' in kwargs:
+        elev_range = kwargs['elev_range']
+    else:
+        elev_range = False
+
+if cellarea:
+    garea = np.fromfile(os.path.join(in_path, 'GAREA.UNF0'), dtype='>f4').astype(float)
+    inputdata['cellarea'] = [garea[x - 1] for x in inputdata['GR.UNF2']]
+
+if elev_range:
+    elev_range = np.fromfile(os.path.join(in_path, "G_ELEV_RANGE.101.UNF2"), dtype='>H').astype(int)
+
+    elev_range = pd.DataFrame(elev_range.reshape((inputdata.shape[0], 101)),
+                              columns=['elev_range_{}'.format(x) for x in range(1, 102)])
+    inputdata['elev_range'] = elev_range.values.tolist()
+# self.data = pd.concat([inputdata.reset_index(), elev_range], axis=1)
+
+if 'select_arcids' in kwargs:
+    inputdata = inputdata.loc[kwargs['select_arcids'], :]
+self.data = inputdata
+return self
+
+
+
+#######################################################################################
+
+
+
+inputdata = pd.DataFrame()
+# for inputfile in relevant_files:
+#     x = read_unf_file(os.path.join(in_path, inputfile),
+#                       arcid_folderpath=arcid_folderpath)
+
+filepath = os.path.join(in_path, inputfile)
+
+days_in_month = {
+    1: 31,
+    2: 28,
+    3: 31,
+    4: 30,
+    5: 31,
+    6: 30,
+    7: 31,
+    8: 31,
+    9: 30,
+    10: 31,
+    11: 30,
+    12: 31
+}
+
+
+
+
+
+
 def simple_read_unf(filepath, arcid_folderpath, **kwargs):
     unf_instance = Unf(arcid_folderpath=arcid_folderpath)
     unf_instance.filename = os.path.split(filepath)[-1]
@@ -555,20 +716,6 @@ def simple_read_unf(filepath, arcid_folderpath, **kwargs):
     return data
     #unf_instance.nrows = int(data.shape[0] / unf_instance.ncols)  # wg data are unidimensional
 
-#Create an array
-dat_flowdir = simple_read_unf(os.path.join(in_path, 'G_FLOWDIR.UNF2'), arcid_folderpath)
-dat_gc= simple_read_unf(os.path.join(in_path, 'GC.UNF2'), arcid_folderpath)
-dat_gr= simple_read_unf(os.path.join(in_path, 'GR.UNF2'), arcid_folderpath)
-
-ar_flowdir_test = np.empty([np.max(dat_gr), np.max(dat_gc)], dtype=int)
-for i in range(len(dat_flowdir)):
-    ar_flowdir_test[dat_gr[i]-1, dat_gc[i]-1] = dat_flowdir[i]
-
-DownScaleArray(dconfig,
-               dconfig.aoi,
-               write_raster_trigger=True).load_data(ar_flowdir_test,
-                                                    status='5min_flowdirtest_eu'
-                                                    )
 
 
 def read_unf_file(filepath, arcid_folderpath, **kwargs):

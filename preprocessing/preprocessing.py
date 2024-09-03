@@ -111,8 +111,8 @@ if __name__ == '__main__':
     # Folder structure
     rootdir = (os.path.dirname(os.path.abspath(
             getsourcefile(lambda: 0)))).split('\\src')[0]
-    datdir = os.path.join(rootdir, 'data')
-    resdir = os.path.join(rootdir, 'results')
+    datdir = os.path.join(rootdir, 'data_wg3')
+    resdir = os.path.join(rootdir, 'results_wg3')
 
     setup_folder = os.path.join(datdir, "setupdata_for_downscaling")
 

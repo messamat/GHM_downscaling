@@ -29,7 +29,7 @@ class WaterGAPData(object):
             self.data = self.data.reset_index()
         df = self.data
 
-        #Make sure that requested parameter names are corretly formatted
+        #Make sure that requested parameter names are correctly formatted
         if isinstance(parameters, str):
             parameters = [parameters]
         implemented_parameters = ['cont_area', 'LDD', 'country']
