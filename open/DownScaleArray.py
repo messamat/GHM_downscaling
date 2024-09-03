@@ -53,6 +53,7 @@ class DownScaleArray:
 
         self.write_raster_specs = {
             '30min': 2,
+            '5min': 12,
             '6min': 10,
             '30sec': 120,
             '15s': 240
