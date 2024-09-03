@@ -453,7 +453,7 @@ def read_unf_file(filepath, arcid_folderpath, **kwargs):
     data = data.assign(arcid=arcid_ref.loc[:, 'ArcID'])
 
     #If dimension does not match corresponding landmask (DDM30 or CRU), remove NAs
-    if unf_instance.nrows not in landmask_ref.values():
+    if unf_instance.nrows not in landmask_ref.keys():
         data.dropna(inplace=True)
 
     #Identify variable name
